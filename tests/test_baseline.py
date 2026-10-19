@@ -33,6 +33,8 @@ def make_snap(
         ret_7d=0.0,
         realized_vol=0.5,
         drawdown=0.0,
+        channel_high=0.0,
+        channel_low=0.0,
     )
 
 

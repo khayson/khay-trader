@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from trader.state.snapshot import Snapshot
-from trader.strategy.base import Action, Intent, Position
+from trader.strategy.base import StopSizing, TrailingStopStrategy
 
 
 @dataclass(frozen=True)
@@ -31,28 +31,16 @@ class BaselineParams:
         )
 
 
-class Baseline:
+class Baseline(TrailingStopStrategy):
     def __init__(self, params: BaselineParams) -> None:
         self.p = params
+        self.sizing = StopSizing(
+            params.stop_atr_mult, params.risk_per_trade_pct, params.max_position_pct
+        )
 
-    def decide(self, snap: Snapshot, position: Position | None, equity: float) -> Intent:
-        trail = snap.close - self.p.stop_atr_mult * snap.atr
-        if position is not None:
-            if snap.close < snap.ema_fast or snap.close <= position.stop_price:
-                return Intent(Action.EXIT, size=position.qty)
-            return Intent(Action.HOLD, stop_price=max(position.stop_price, trail))
-
+    def entry_signal(self, snap: Snapshot) -> bool:
         trending = snap.close > snap.ema_fast > snap.ema_slow
-        sane_vol = self.p.atr_pct_min <= snap.atr_pct <= self.p.atr_pct_max
-        if not (trending and sane_vol) or trail <= 0:
-            return Intent(Action.HOLD)
-        size = self.size(equity, snap.close, trail)
-        if size <= 0:
-            return Intent(Action.HOLD)
-        return Intent(Action.ENTER, size=size, stop_price=trail)
+        return trending and self.p.atr_pct_min <= snap.atr_pct <= self.p.atr_pct_max
 
-    def size(self, equity: float, price: float, stop: float) -> float:
-        """Fixed-fractional risk over stop distance, capped by max position notional."""
-        by_risk = equity * self.p.risk_per_trade_pct / 100 / (price - stop)
-        cap = equity * self.p.max_position_pct / 100 / price
-        return max(0.0, min(by_risk, cap))
+    def exit_signal(self, snap: Snapshot) -> bool:
+        return snap.close < snap.ema_fast

@@ -18,6 +18,8 @@ features:
   atr_period: 14            # Wilder smoothing
   vol_window_hours: 168     # realized volatility of 1-bar log returns
   drawdown_window_hours: 168 # rolling peak for drawdown
+  channel_entry: 55         # bars, prior-high breakout channel
+  channel_exit: 20          # bars, prior-low exit channel
 strategy:                   # baseline, SPEC section 5. Defaults chosen a priori, not tuned.
   atr_pct_min: 0.2          # ATR as % of close; below = dead market
   atr_pct_max: 3.0          # above = disorderly market
