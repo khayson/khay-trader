@@ -77,7 +77,8 @@ risk:
 ## 5. Baseline strategy (benchmark everything against this)
 
 - Long-only spot.
-- Entry: close > EMA200 and EMA50 > EMA200 and ATR% inside a sane band.
+- Entry: close > EMA50 > EMA200 (i.e. close > EMA50, EMA50 > EMA200; implies close > EMA200) and ATR% inside a sane band.
+  - Deliberate change (Phase 2 review): v1 required only close > EMA200, so a close between EMA200 and EMA50 could enter and then exit next candle on the close < EMA50 rule.
 - Exit: close < EMA50, or ATR trailing stop hit.
 - Size: fixed-fractional risk (`risk_per_trade_pct`) divided by stop distance, capped by `max_position_pct`.
 - Any later idea (including LLM-derived ones) must beat this after costs, out-of-sample.

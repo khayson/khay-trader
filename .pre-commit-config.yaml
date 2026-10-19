@@ -1,0 +1,9 @@
+# Blocks commits that contain likely secrets. Install once: pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets
+        entry: detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        exclude: ^\.secrets\.baseline$

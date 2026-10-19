@@ -10,6 +10,7 @@ SPEC.md is the source of truth. Implement one phase at a time; stop for review a
 
 ## Commands
 - Setup: `python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"` (or `uv sync --extra dev`)
+- Secret scan: `.venv/Scripts/pre-commit install` once; runs detect-secrets on every commit
 - Tests: `.venv/Scripts/python -m pytest`
 - Lint/types: `.venv/Scripts/python -m ruff check . && .venv/Scripts/python -m mypy`
 - Backfill candles: `.venv/Scripts/trader-backfill --years 2`
