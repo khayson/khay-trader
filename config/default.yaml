@@ -1,0 +1,14 @@
+mode: paper                 # paper | live  (live requires explicit flag + env var)
+exchange: binance           # ccxt exchange id; public endpoints only for data
+pairs: [BTC/USDT, ETH/USDT]
+timeframe: 1h
+fees_per_side: 0.001        # 0.10%
+slippage_per_side: 0.0005   # 0.05%
+risk:
+  max_drawdown_pct: 15      # from equity peak -> kill switch trips
+  max_position_pct: 10      # per pair, of equity
+  max_total_exposure_pct: 20
+  max_daily_loss_pct: 2
+  risk_per_trade_pct: 0.5
+  max_orders_per_hour: 6
+  stale_data_seconds: 180   # no trading on stale data
