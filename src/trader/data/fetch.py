@@ -103,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Backfill closed candles for configured pairs.")
     parser.add_argument("--config", type=Path, default=Path("config/default.yaml"))
     parser.add_argument("--years", type=float, default=2.0)
+    parser.add_argument("--since", type=pd.Timestamp, help="UTC start date; overrides --years")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--report", type=Path, default=Path("reports/data_gaps.md"))
     args = parser.parse_args(argv)
@@ -112,7 +113,10 @@ def main(argv: list[str] | None = None) -> int:
     exchange = getattr(ccxt, cfg["exchange"])({"enableRateLimit": True})
     step = _step(exchange, timeframe)
     now = pd.Timestamp.now(tz="UTC")
-    start = (now - pd.Timedelta(days=365.25 * args.years)).floor(step)
+    if args.since is not None:
+        start = args.since.tz_localize("UTC") if args.since.tzinfo is None else args.since
+    else:
+        start = (now - pd.Timedelta(days=365.25 * args.years)).floor(step)
 
     results: dict[str, tuple[pd.DataFrame, list[store.Gap]]] = {}
     for symbol in cfg["pairs"]:
