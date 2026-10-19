@@ -1,0 +1,20 @@
+# Research round 1. Pre-registered on 2026-10-19, before any result of these candidates was
+# seen. Do not edit after running: changing anything here burns the validate/test periods.
+# Sizing, caps and costs come from config/default.yaml (risk, fees_per_side, slippage_per_side).
+seed: 42
+mc_runs: 1000              # random-entry runs per candidate and split, through the engine
+cost_sensitivity: 0.5      # extra run at 0.5x costs; decisions use 1x only
+splits:                    # [start, end) in UTC; end null = end of data
+  train: ["2018-01-01", "2023-01-01"]
+  validate: ["2023-01-01", "2024-10-19"]
+  test: ["2024-10-19", null]   # second look: the 1h baseline already used this period once
+rule:
+  min_percentile: 80       # vs random entry, on both train and validate
+  test_max_drawdown_pct: 15
+stop_atr_mult: 3.0         # ATR(14) initial and ratcheting stop, intrabar fills (primary)
+atr_period: 14
+candidates:
+  A: {timeframe: 4h, rule: ema_trend, ema_fast: 20, ema_slow: 100}
+  B: {timeframe: 4h, rule: ema_trend, ema_fast: 50, ema_slow: 200}
+  C: {timeframe: 1D, rule: ema_trend, ema_fast: 20, ema_slow: 100}
+  D: {timeframe: 1D, rule: breakout, channel_entry: 55, channel_exit: 20}
