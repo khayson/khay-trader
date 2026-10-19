@@ -1,0 +1,5 @@
+# Candle gaps verified by hand as genuine exchange outages.
+# The real-data test fails on any gap not listed here.
+# Entry: {symbol: BTC/USDT, timeframe: 1h, start: "2024-01-01T00:00:00+00:00", end: "..."}
+# start/end are the first and last missing candle open times (UTC), as in reports/data_gaps.md.
+gaps: []
