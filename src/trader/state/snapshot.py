@@ -43,9 +43,13 @@ class FeatureParams:
         return cls(**cfg["features"])
 
     def warmup_bars(self, step: pd.Timedelta) -> int:
-        """Candles needed before every feature is defined."""
+        """Candles needed before every feature is defined and the EMAs have converged.
+
+        5 * ema_slow bars leaves ~0.005% weight on the first-candle seed, so features
+        agree regardless of how much history was loaded.
+        """
         return max(
-            self.ema_slow,
+            5 * self.ema_slow,
             self.atr_period,
             _bars(pd.Timedelta(days=7), step) + 1,
             _bars(pd.Timedelta(hours=self.vol_window_hours), step) + 1,

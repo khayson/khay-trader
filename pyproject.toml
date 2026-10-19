@@ -17,6 +17,7 @@ dev = [
 
 [project.scripts]
 trader-backfill = "trader.data.fetch:main"
+trader-backtest = "trader.backtest.report:main"
 
 [build-system]
 requires = ["hatchling"]
