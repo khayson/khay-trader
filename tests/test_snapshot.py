@@ -32,15 +32,15 @@ def random_candles(n: int, seed: int = 7) -> pd.DataFrame:
     )
 
 
-FULL = random_candles(800)
+FULL = random_candles(2000)
 # Close times to probe: before warmup, at the first ready bar, mid-series, mid-candle, near the end.
 PROBES = [
     T0 + 50 * HOUR,
-    T0 + 200 * HOUR,
-    T0 + 201 * HOUR,
-    T0 + 450 * HOUR,
-    T0 + 450 * HOUR + pd.Timedelta(minutes=30),
-    T0 + 799 * HOUR,
+    T0 + 1000 * HOUR,
+    T0 + 1001 * HOUR,
+    T0 + 1450 * HOUR,
+    T0 + 1450 * HOUR + pd.Timedelta(minutes=30),
+    T0 + 1999 * HOUR,
 ]
 
 
@@ -75,7 +75,7 @@ def test_mutating_the_future_does_not_change_the_snapshot(t: pd.Timestamp) -> No
     pd.testing.assert_frame_equal(before, after, check_exact=True)
 
 
-@pytest.mark.parametrize("t", [T0 + 201 * HOUR, T0 + 450 * HOUR, T0 + 799 * HOUR])
+@pytest.mark.parametrize("t", [T0 + 1001 * HOUR, T0 + 1450 * HOUR, T0 + 1999 * HOUR])
 def test_mutating_the_past_does_change_the_snapshot(t: pd.Timestamp) -> None:
     """Sensitivity check: proves the look-ahead tests above are able to fail."""
     last_closed = FULL.index[FULL["timestamp"] + HOUR == t][0]
@@ -88,11 +88,11 @@ def test_mutating_the_past_does_change_the_snapshot(t: pd.Timestamp) -> None:
 
 
 def test_snapshot_time_is_close_time_of_last_closed_candle() -> None:
-    t = T0 + 450 * HOUR + pd.Timedelta(minutes=30)  # candle opened at T0+450h is still forming
+    t = T0 + 1450 * HOUR + pd.Timedelta(minutes=30)  # candle opened at T0+1450h still forming
     s = snap.snapshot(FULL, t, HOUR, PARAMS)
     assert s is not None
-    assert s.time == T0 + 450 * HOUR
-    assert s.close == FULL["close"].iloc[449]
+    assert s.time == T0 + 1450 * HOUR
+    assert s.close == FULL["close"].iloc[1449]
 
 
 # --- determinism and warmup -----------------------------------------------------------------
@@ -111,12 +111,12 @@ def test_deterministic_byte_identical() -> None:
 
 
 def test_warmup() -> None:
-    assert PARAMS.warmup_bars(HOUR) == 200
+    assert PARAMS.warmup_bars(HOUR) == 5 * PARAMS.ema_slow == 1000
     feats = snap.features(FULL, HOUR, PARAMS)
-    assert not feats["ready"].iloc[:199].any()
-    assert feats["ready"].iloc[199:].all()
-    assert snap.snapshot(FULL, T0 + 199 * HOUR, HOUR, PARAMS) is None
-    ready = snap.snapshot(FULL, T0 + 200 * HOUR, HOUR, PARAMS)
+    assert not feats["ready"].iloc[:999].any()
+    assert feats["ready"].iloc[999:].all()
+    assert snap.snapshot(FULL, T0 + 999 * HOUR, HOUR, PARAMS) is None
+    ready = snap.snapshot(FULL, T0 + 1000 * HOUR, HOUR, PARAMS)
     assert ready is not None
     assert all(math.isfinite(v) for v in vars(ready).values() if isinstance(v, float))
     assert snap.snapshot(FULL, T0, HOUR, PARAMS) is None  # no closed candles at all
@@ -125,6 +125,16 @@ def test_warmup() -> None:
 def test_no_nan_in_ready_rows() -> None:
     feats = snap.features(FULL, HOUR, PARAMS)
     assert not feats[feats["ready"]].isna().any().any()
+
+
+def test_short_history_matches_full_history() -> None:
+    """A live loop loading only 1500 candles must agree with the full-history backtest."""
+    long = random_candles(6000, seed=3)
+    full = snap.features(long, HOUR, PARAMS).iloc[-1]
+    short = snap.features(long.iloc[-1500:], HOUR, PARAMS).iloc[-1]
+    assert bool(short["ready"])
+    for f in snap.FEATURES:
+        assert short[f] == pytest.approx(full[f], rel=1e-6), f
 
 
 # --- indicator reference values --------------------------------------------------------------

@@ -95,7 +95,7 @@ def test_hold_ratchets_trailing_stop_up_never_down() -> None:
 
 
 def test_clear_uptrend_series_enters_end_to_end() -> None:
-    n = 400
+    n = 1200
     close = 100 * np.exp(np.linspace(0, 0.4, n)) * (1 + 0.003 * np.sin(np.arange(n)))
     candles = pd.DataFrame(
         {

@@ -4,6 +4,9 @@ repos:
     hooks:
       - id: detect-secrets
         name: detect-secrets
-        entry: detect-secrets-hook --baseline .secrets.baseline
+        # Venv interpreter by path, so the hook works without activating the venv (Windows
+        # layout). Doubled backslashes: pre-commit's shlex split eats single ones, and Windows
+        # CreateProcess rejects relative paths with forward slashes.
+        entry: .venv\\Scripts\\python.exe -m detect_secrets.pre_commit_hook --baseline .secrets.baseline
         language: system
         exclude: ^\.secrets\.baseline$
