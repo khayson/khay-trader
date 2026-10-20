@@ -264,6 +264,16 @@ class Journal:
             df[col] = pd.to_datetime(df[col], utc=True, format="ISO8601")
         return df
 
+    def wake_status(self, slot: pd.Timestamp) -> str | None:
+        row = self.conn.execute("SELECT status FROM wakes WHERE slot = ?", (_iso(slot),)).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_wake_status(self, slot: pd.Timestamp, status: str, wake_time: pd.Timestamp) -> None:
+        self.conn.execute(
+            "UPDATE wakes SET status = ?, wake_time = ? WHERE slot = ?",
+            (status, _iso(wake_time), _iso(slot)),
+        )
+
     def missed_wakes(self, since: pd.Timestamp) -> int:
         row = self.conn.execute(
             "SELECT COUNT(*) FROM wakes WHERE status = 'missed' AND slot >= ?", (_iso(since),)

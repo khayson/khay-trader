@@ -308,6 +308,35 @@ def test_ticks_continue_while_a_stale_wake_retries(tmp_path: Path, reference: Wo
     assert (w.journal.frame("fills")["reason"] == "killswitch").any()
 
 
+def test_stale_slot_is_retried_every_five_minutes_until_its_bar_arrives(
+    tmp_path: Path, reference: World
+) -> None:
+    w = make_world(tmp_path)
+    exit_bar = _first(reference, "exit_time", reason="signal")
+    w.run(FIRST_WAKE, exit_bar - STEP)
+    w.fx.feed_cutoff = exit_bar - HOUR  # the bar closing at exit_bar is late
+
+    def at(minutes: float) -> None:
+        w.fx.now = exit_bar + pd.Timedelta(minutes=minutes)
+        w.loop.run_once(w.fx.now)
+
+    for m in range(0, 17):  # retries inside the 15-minute grace, then goes stale
+        at(m + 1 / 6)
+    assert w.journal.wake_status(exit_bar) == "stale"
+    attempts_before = w.journal.get_time("wake_attempt")
+    at(18)  # under 5 minutes since the stale attempt: just a tick
+    assert w.journal.get_time("wake_attempt") == attempts_before
+    w.fx.feed_cutoff = None  # the bar is published 20 minutes late
+    at(22)
+    assert w.journal.wake_status(exit_bar) == "late"
+    assert w.journal.get_time("last_bar_close") == exit_bar
+    trades = w.journal.frame("trades")
+    exits = trades[trades["exit_reason"] == "signal"]
+    assert (exits["exit_time"] == exit_bar).any()  # exit ran (at the current 1h open)
+    decided = w.journal.frame("decisions").query("bar_close == @exit_bar and action == 'enter'")
+    assert decided["risk"].str.startswith("rejected: stale data").all()
+
+
 def test_dead_man_pinged_every_minute_during_api_outage(tmp_path: Path) -> None:
     w = make_world(tmp_path)
     w.wake(FIRST_WAKE)

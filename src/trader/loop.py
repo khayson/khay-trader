@@ -74,6 +74,7 @@ HOUR = pd.Timedelta(hours=1)
 MINUTE = pd.Timedelta(minutes=1)
 MAX_CRASHES = 5
 STALE_GRACE = pd.Timedelta(minutes=15)  # wait this long for a late bar before going stale
+STALE_RETRY = pd.Timedelta(minutes=5)  # then keep retrying a stale slot this often
 
 # Entry rejections the backtest cannot reproduce; divergence treats their bars as unclean.
 OPERATIONAL_REJECTIONS = (
@@ -452,6 +453,9 @@ class PaperLoop:
 
             processed = self.j.get_time("last_bar_close")
             if processed is None or processed < last_close:
+                if self.j.wake_status(last_close) == "stale":  # its bar finally arrived
+                    self.j.set_wake_status(last_close, "late", now)
+                    log.warning("wake slot %s: bar arrived late; deciding now", last_close)
                 block = self._entry_block(now, skew, newest_off, outage_in_bar)
                 self._decide_and_execute(now, last_close, feats, equity, opens, ref_time, block)
                 self.j.set("last_bar_close", last_close)
@@ -849,7 +853,16 @@ class PaperLoop:
         slot = now.floor(self.step_td)
         due = slot + pd.Timedelta(seconds=self.s.wake_delay_seconds)
         last = self.j.last_slot()
-        if now >= due and (last is None or last < slot):
+        decided = self.j.get_time("last_bar_close")
+        attempted = self.j.get_time("wake_attempt")
+        retry_stale = (  # the slot went stale; keep looking for its bar until the next slot
+            last == slot
+            and self.j.wake_status(slot) == "stale"
+            and (decided is None or decided < slot)
+            and (attempted is None or now - attempted >= STALE_RETRY)
+        )
+        if now >= due and (last is None or last < slot or retry_stale):
+            self.j.set("wake_attempt", now)
             try:
                 self.step(now)
                 self.j.set("consecutive_crashes", 0)
