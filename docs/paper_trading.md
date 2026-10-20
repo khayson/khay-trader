@@ -24,8 +24,9 @@ blocks entries. Paper needs no keys, so a cheap VPS is safe.
    that are committed:
    - `TRADER_ALERT_WEBHOOK`: URL receiving a POST per alert (Slack/Discord style JSON with
      `text`/`content`). For phone push via ntfy.sh, also set `TRADER_ALERT_FORMAT=ntfy`.
-   - `TRADER_DEADMAN_URL`: pinged on every wake (e.g. a healthchecks.io check with a 4h
-     period and some grace). It alerts you when pings stop: dead machine, dead loop.
+   - `TRADER_DEADMAN_URL`: pinged every minute (each tick and each wake). Use e.g. a
+     healthchecks.io check with **period 5 minutes, grace 10 minutes**: it alerts you when
+     pings stop (dead machine, dead loop, network down) within about 15 minutes.
    Alerts go out on: kill-switch trip, missed-wake threshold, clock skew, new exchange
    outage, persistent bar-parity mismatch, divergence (explained or not), slippage above
    3x the model, stale heartbeat (via the status check), and a daily summary.

@@ -773,8 +773,10 @@ class PaperLoop:
 
     def tick(self, now: pd.Timestamp) -> None:
         """Between wakes: poll resting stops (never past the newest decided bar, so fills
-        match the replay) and flatten promptly if the kill switch tripped."""
+        match the replay) and flatten promptly if the kill switch tripped. Pings the
+        dead-man URL every minute so a dead machine is noticed within minutes."""
         self.j.set("heartbeat", now)
+        self.alerter.ping()
         decided = self.j.get_time("last_bar_close")
         if decided is None:
             return

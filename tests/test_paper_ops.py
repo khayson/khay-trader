@@ -354,6 +354,16 @@ def test_alerts_never_log_urls(caplog: pytest.LogCaptureFixture) -> None:
     assert "hook-1234" not in caplog.text
 
 
+def test_dead_man_pinged_on_every_tick(tmp_path: Path) -> None:
+    w = make_world(tmp_path)
+    sent: list[urllib.request.Request] = []
+    w.loop.alerter = Alerter(deadman="https://ping.example.invalid/x", sender=sent.append)
+    w.wake(FIRST_WAKE)
+    for k in range(1, 4):
+        w.loop.tick(FIRST_WAKE + k * pd.Timedelta(minutes=1))
+    assert len(sent) == 4  # one per wake and one per tick
+
+
 def test_fake_exchange_is_deterministic() -> None:
     fx = FakeExchange(MINUTES, FIRST_WAKE)
     assert fx.fetch_ohlcv("AAA/USDT", "1h", limit=3) == fx.fetch_ohlcv("AAA/USDT", "1h", limit=3)
