@@ -11,6 +11,7 @@ from typing import Any
 class Costs:
     fee: float  # fraction of notional, per side
     slippage: float  # fraction of price, per side
+    stop_slippage: float | None = None  # stop fills only; None = same as slippage
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> Costs:
@@ -21,6 +22,10 @@ class Costs:
 
     def sell_price(self, price: float) -> float:
         return price * (1 - self.slippage)
+
+    def stop_sell_price(self, price: float) -> float:
+        slip = self.slippage if self.stop_slippage is None else self.stop_slippage
+        return price * (1 - slip)
 
     def fee_on(self, notional: float) -> float:
         return notional * self.fee

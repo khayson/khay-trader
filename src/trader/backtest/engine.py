@@ -111,7 +111,7 @@ class _Book:
         step: pd.Timedelta,
     ) -> None:
         qty = self.positions.pop(sym).qty
-        price = self.costs.sell_price(raw)
+        price = self.costs.stop_sell_price(raw) if reason == "stop" else self.costs.sell_price(raw)
         fee = self.costs.fee_on(qty * price)
         proceeds = qty * price - fee
         self.cash += proceeds
