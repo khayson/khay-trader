@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import ccxt
@@ -43,6 +44,10 @@ class FakeExchange:
         self.fail_next = 0  # raise NetworkError on the next N calls
         self.feed_cutoff: pd.Timestamp | None = None  # hide 1h/4h candles opening at/after
         self.native_overrides: dict[tuple[str, pd.Timestamp], float] = {}  # 4h close tweaks
+        self.fail_timeframes: set[str] = set()  # these timeframes always raise NetworkError
+        self.clock_skew = pd.Timedelta(0)  # exchange clock minus ours
+        self.amount_step = 1e-12  # lot size; tiny so replay quantities match the engine
+        self.min_cost = 0.0  # minimum notional
         self.frames = {
             s: {"1m": m, "1h": resample(m, "1h", MINUTE), "4h": resample(m, "4h", MINUTE)}
             for s, m in minutes.items()
@@ -61,6 +66,8 @@ class FakeExchange:
         self, symbol: str, timeframe: str, since: int | None = None, limit: int | None = None
     ) -> list[list[float]]:
         self._maybe_fail()
+        if timeframe in self.fail_timeframes:
+            raise ccxt.NetworkError(f"fake {timeframe} endpoint down")
         df = self.frames[symbol][timeframe]
         visible = df[df["timestamp"] <= self.now]  # includes the forming candle (open only used)
         if self.feed_cutoff is not None and timeframe != "1m":
@@ -85,3 +92,49 @@ class FakeExchange:
         asks = [[price * (1 + 0.0002 + 0.0001 * i), 50.0] for i in range(limit)]
         bids = [[price * (1 - 0.0002 - 0.0001 * i), 50.0] for i in range(limit)]
         return {"asks": asks, "bids": bids}
+
+    def fetch_time(self) -> int:
+        self._maybe_fail()
+        return int((self.now + self.clock_skew).timestamp() * 1000)
+
+    def load_markets(self) -> dict[str, Any]:
+        self._maybe_fail()
+        return {s: self.market(s) for s in self.frames}
+
+    def market(self, symbol: str) -> dict[str, Any]:
+        return {
+            "symbol": symbol,
+            "limits": {"amount": {"min": self.amount_step}, "cost": {"min": self.min_cost}},
+        }
+
+    def amount_to_precision(self, symbol: str, amount: float) -> str:
+        return repr(math.floor(amount / self.amount_step) * self.amount_step)
+
+
+def minutes_from_hours(hours: pd.DataFrame) -> pd.DataFrame:
+    """1m candles from real 1h candles: each hour opens at the previous close and moves
+    open -> high -> low -> close in its first three minutes, then sits at the close. Every
+    minute opens where the last one closed, so a stop's first touching minute opens above
+    the stop unless the bar itself opened below it: the engine's min(open, stop) rule.
+    Missing hours (outages) stay missing."""
+    close = hours["close"].to_numpy()
+    prev_close = np.concatenate([[float(hours["open"].iloc[0])], close[:-1]])
+    path = np.stack([prev_close, hours["high"].to_numpy(), hours["low"].to_numpy(), close], axis=1)
+    n = len(hours)
+    opens = np.empty((n, 60))
+    closes = np.empty((n, 60))
+    opens[:, :3], closes[:, :3] = path[:, :3], path[:, 1:]
+    opens[:, 3:] = close[:, None]
+    closes[:, 3:] = close[:, None]
+    naive = hours["timestamp"].dt.tz_convert(None).to_numpy(dtype="datetime64[ns]")
+    start = naive[:, None] + np.arange(60) * np.timedelta64(1, "m")
+    return pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(start.ravel(), utc=True),
+            "open": opens.ravel(),
+            "high": np.maximum(opens, closes).ravel(),
+            "low": np.minimum(opens, closes).ravel(),
+            "close": closes.ravel(),
+            "volume": np.repeat(hours["volume"].to_numpy() / 60, 60),
+        }
+    )

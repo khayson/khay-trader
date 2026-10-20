@@ -14,6 +14,7 @@ from trader.backtest.research import Candidate
 from trader.data import store
 from trader.data.resample import resample
 from trader.exec import divergence
+from trader.exec.alerts import Alerter
 from trader.exec.journal import Journal
 from trader.exec.paper import PaperBroker, walk_book
 from trader.loop import PaperLoop, Settings, single_instance
@@ -44,7 +45,8 @@ COSTS = Costs(fee=0.001, slippage=0.0005, stop_slippage=0.0015)
 FIRST_WAKE = T0 + 50 * STEP
 LAST_WAKE = T0 + 170 * STEP
 MINUTES = {s: make_minutes(T0, HOURS, seed) for seed, s in enumerate(SYMBOLS, start=1)}
-ON_TIME = pd.Timedelta(seconds=5)
+ON_TIME = pd.Timedelta(seconds=10)
+NO_DELAY = (0.0, 0.0)
 Row = tuple[str, pd.Timestamp, pd.Timestamp, str, float, float]
 
 
@@ -67,11 +69,21 @@ class World:
 
     def restart(self, fill_model: str = "modeled") -> None:
         self.loop = PaperLoop(
-            self.settings, self.fx, self.journal, PaperBroker(self.fx, COSTS, fill_model)
+            self.settings,
+            self.fx,
+            self.journal,
+            PaperBroker(self.fx, COSTS, fill_model, retry_delays=NO_DELAY),
+            self.loop.alerter,
+            clock=lambda: self.fx.now,
         )
 
 
-def make_world(tmp_path: Path, flatten: bool = True, fill_model: str = "modeled") -> World:
+def make_world(
+    tmp_path: Path,
+    flatten: bool = True,
+    fill_model: str = "modeled",
+    minutes: dict[str, pd.DataFrame] | None = None,
+) -> World:
     settings = Settings(
         symbols=SYMBOLS,
         candidate=CANDIDATE,
@@ -88,11 +100,13 @@ def make_world(tmp_path: Path, flatten: bool = True, fill_model: str = "modeled"
         parity_bars=5,
         divergence_min_fills=10,
         divergence_slippage_mult=3.0,
+        retry_delays=NO_DELAY,
     )
     ks.save(settings.ks_path, ks.rearm(ks.load(settings.ks_path), "test", T0, 10_000.0))
-    fx = FakeExchange(MINUTES, FIRST_WAKE)
+    fx = FakeExchange(minutes or MINUTES, FIRST_WAKE)
     journal = Journal(tmp_path / "paper.db")
-    loop = PaperLoop(settings, fx, journal, PaperBroker(fx, COSTS, fill_model))
+    broker = PaperBroker(fx, COSTS, fill_model, retry_delays=NO_DELAY)
+    loop = PaperLoop(settings, fx, journal, broker, Alerter(), clock=lambda: fx.now)
     return World(fx, journal, loop, settings)
 
 
@@ -140,13 +154,6 @@ def comparable(trades: pd.DataFrame, horizon: pd.Timestamp) -> list[Row]:
     return sorted(out)
 
 
-@pytest.fixture(scope="module")
-def reference(tmp_path_factory: pytest.TempPathFactory) -> World:
-    w = make_world(tmp_path_factory.mktemp("reference"))
-    w.run(FIRST_WAKE, LAST_WAKE)
-    return w
-
-
 # --- replay parity ---------------------------------------------------------------------------
 
 
@@ -160,7 +167,7 @@ def test_paper_loop_reproduces_backtest_trade_for_trade(reference: World) -> Non
     mismatches = divergence.compare(
         trades, w.journal.positions(), result, LAST_WAKE, STEP, w.journal.frame("fills")
     )
-    assert mismatches == []
+    assert mismatches == ([], [])  # (unexplained, explained)
     assert not ks.load(w.settings.ks_path).tripped  # daily divergence checks found nothing
 
 
@@ -179,7 +186,7 @@ def test_journal_records_decisions_equity_and_heartbeat(reference: World) -> Non
     assert set(decisions["symbol"]) == set(SYMBOLS)
     assert decisions["bar_close"].max() == LAST_WAKE
     assert len(j.frame("equity", order="time")) == (LAST_WAKE - FIRST_WAKE) / STEP + 1
-    assert j.get_time("heartbeat") == LAST_WAKE + pd.Timedelta(seconds=5)
+    assert j.get_time("heartbeat") == LAST_WAKE + ON_TIME
     assert j.frame("parity").empty  # our 4h bars match the native klines
 
 
@@ -262,7 +269,7 @@ def test_stale_feed_blocks_entry_allows_exit(tmp_path: Path, reference: World) -
     assert (w.journal.frame("events")["kind"] == "stale_feed").any()  # priced from the book
     trades = w.journal.frame("trades")
     assert (trades["exit_time"] == exit_bar + STEP).any()  # exit executed anyway
-    wake = decisions[decisions["wake_time"] == exit_bar + STEP + pd.Timedelta(seconds=5)]
+    wake = decisions[decisions["wake_time"] == exit_bar + STEP + ON_TIME]
     entries = wake[wake["action"] == "enter"]
     assert entries["risk"].str.startswith("rejected: stale data").all()
 
@@ -356,8 +363,11 @@ def test_book_fill_records_model_alongside(tmp_path: Path) -> None:
     assert len(buys) > 0
     assert (buys["price"] > buys["raw_price"]).all()
     assert (buys["modeled_price"] == buys["raw_price"] * (1 + COSTS.slippage)).all()
-    n, avg, warn = divergence.slippage_check(fills, COSTS.slippage, 10, 3.0)
-    assert n > 0 and avg > 0 and not warn
+    report = divergence.slippage_check(fills, COSTS.slippage, 10, 3.0)
+    assert report.fills > 0 and report.total > 0 and not report.warn
+    assert buys["mid"].notna().all() and (buys["spread"] > 0).all()
+    assert report.impact is not None and report.drift is not None
+    assert report.total == pytest.approx(report.impact + report.drift, abs=1e-6)
 
 
 def test_walk_book() -> None:
@@ -444,6 +454,6 @@ def test_slippage_warning_threshold() -> None:
             }
         )
 
-    assert divergence.slippage_check(fills(10, 0.0016), 0.0005, 10, 3.0)[2]  # > 3x over 10
-    assert not divergence.slippage_check(fills(9, 0.0016), 0.0005, 10, 3.0)[2]  # too few
-    assert not divergence.slippage_check(fills(10, 0.0014), 0.0005, 10, 3.0)[2]  # under 3x
+    assert divergence.slippage_check(fills(10, 0.0016), 0.0005, 10, 3.0).warn  # > 3x over 10
+    assert not divergence.slippage_check(fills(9, 0.0016), 0.0005, 10, 3.0).warn  # too few
+    assert not divergence.slippage_check(fills(10, 0.0014), 0.0005, 10, 3.0).warn  # under 3x
