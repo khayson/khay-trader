@@ -266,3 +266,17 @@ def test_clipped_and_dropped_entries_are_recorded() -> None:
     assert rej.loc["B/USDT", "kind"] == "dropped"
     assert rej.loc["B/USDT", "reason"] == "no headroom"
     assert list(res.fills.loc[res.fills["side"] == "buy", "symbol"]) == ["A/USDT"]
+
+
+def test_stop_slippage_applies_to_stop_fills_only() -> None:
+    o = np.full(200, 100.0)
+    lo = o.copy()
+    lo[191] = 94.0
+    costs = Costs(fee=0.001, slippage=0.0005, stop_slippage=0.003)
+    res = run_one(candles(o, o, lo), Script({180: (10, 95), 192: (10, 50)}, {195}), costs=costs)
+    stop = res.fills[res.fills["reason"] == "stop"]
+    assert stop["price"].iloc[0] == pytest.approx(95 * (1 - 0.003))
+    signal = res.fills[res.fills["reason"] == "signal"]
+    assert signal["price"].iloc[0] == pytest.approx(100 * (1 - 0.0005))
+    buys = res.fills[res.fills["side"] == "buy"]
+    np.testing.assert_allclose(buys["price"], 100 * (1 + 0.0005))
