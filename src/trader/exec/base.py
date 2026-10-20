@@ -23,6 +23,8 @@ class Fill:
     raw_price: float  # reference price before slippage (bar open or stop level)
     fee: float
     reason: str  # entry | signal | stop | killswitch
+    mid: float | None = None  # order-book mid when filled (None for simulated/modeled fills)
+    spread: float | None = None  # best ask - best bid when filled
 
 
 class Broker(Protocol):
@@ -35,6 +37,12 @@ class Broker(Protocol):
     def cancel_stop(self, symbol: str) -> None: ...
 
     def resting_stops(self) -> dict[str, tuple[float, float]]: ...
+
+    def conform(self, symbol: str, qty: float, price: float) -> tuple[float, str | None]:
+        """Apply the exchange's amount precision and minimums: (qty, None) or (0, reason)."""
+        ...
+
+    def mid(self, symbol: str) -> float: ...
 
     def poll_stop_fills(self, since: pd.Timestamp, until: pd.Timestamp) -> list[Fill]:
         """Stops triggered in [since, until); each triggered stop is removed."""

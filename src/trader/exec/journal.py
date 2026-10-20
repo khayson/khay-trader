@@ -41,7 +41,15 @@ CREATE TABLE IF NOT EXISTS equity (
 );
 CREATE TABLE IF NOT EXISTS parity (
     id INTEGER PRIMARY KEY, checked_at TEXT, symbol TEXT, bar_open TEXT, field TEXT,
-    ours REAL, native REAL
+    ours REAL, native REAL, seen INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (symbol, bar_open, field)
+);
+CREATE TABLE IF NOT EXISTS wakes (
+    slot TEXT PRIMARY KEY, status TEXT NOT NULL, wake_time TEXT, note TEXT
+);
+CREATE TABLE IF NOT EXISTS outages (
+    symbol TEXT NOT NULL, start TEXT NOT NULL, end TEXT NOT NULL, detected_at TEXT,
+    PRIMARY KEY (symbol, start)
 );
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY, time TEXT, kind TEXT, message TEXT
@@ -70,6 +78,14 @@ class Journal:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=FULL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a journal was created (additive only)."""
+        fill_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(fills)")}
+        for col in ("mid", "spread"):
+            if col not in fill_cols:
+                self.conn.execute(f"ALTER TABLE fills ADD COLUMN {col} REAL")
 
     def close(self) -> None:
         self.conn.close()
@@ -131,7 +147,7 @@ class Journal:
     def add_fill(self, f: Fill, signal_time: pd.Timestamp | None) -> None:
         self.conn.execute(
             "INSERT INTO fills (time, signal_time, symbol, side, qty, price, modeled_price, "
-            "raw_price, fee, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "raw_price, fee, reason, mid, spread) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 _iso(f.time),
                 _iso(signal_time),
@@ -143,6 +159,8 @@ class Journal:
                 f.raw_price,
                 f.fee,
                 f.reason,
+                f.mid,
+                f.spread,
             ),
         )
 
@@ -210,12 +228,63 @@ class Journal:
         field: str,
         ours: float | None,
         native: float | None,
-    ) -> None:
+    ) -> int:
+        """Record a mismatch once per (symbol, bar, field); returns how often it was seen."""
         self.conn.execute(
             "INSERT INTO parity (checked_at, symbol, bar_open, field, ours, native) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(symbol, bar_open, field) DO UPDATE SET "
+            "seen = seen + 1, checked_at = excluded.checked_at, ours = excluded.ours, "
+            "native = excluded.native",
             (_iso(checked_at), symbol, _iso(bar_open), field, ours, native),
         )
+        row = self.conn.execute(
+            "SELECT seen FROM parity WHERE symbol = ? AND bar_open = ? AND field = ?",
+            (symbol, _iso(bar_open), field),
+        ).fetchone()
+        return int(row[0])
+
+    # --- wake slots and runtime outages ------------------------------------------------
+
+    def record_wake(
+        self, slot: pd.Timestamp, status: str, wake_time: pd.Timestamp | None, note: str = ""
+    ) -> None:
+        """status: processed | late | missed | stale | outage. The first record wins."""
+        self.conn.execute(
+            "INSERT INTO wakes VALUES (?, ?, ?, ?) ON CONFLICT(slot) DO NOTHING",
+            (_iso(slot), status, _iso(wake_time), note),
+        )
+
+    def last_slot(self) -> pd.Timestamp | None:
+        row = self.conn.execute("SELECT MAX(slot) FROM wakes").fetchone()
+        return None if row[0] is None else pd.Timestamp(row[0])
+
+    def wake_slots(self) -> pd.DataFrame:
+        df = pd.read_sql_query("SELECT * FROM wakes ORDER BY slot", self.conn)
+        for col in ("slot", "wake_time"):
+            df[col] = pd.to_datetime(df[col], utc=True, format="ISO8601")
+        return df
+
+    def missed_wakes(self, since: pd.Timestamp) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM wakes WHERE status = 'missed' AND slot >= ?", (_iso(since),)
+        ).fetchone()
+        return int(row[0])
+
+    def add_outage(
+        self, symbol: str, start: pd.Timestamp, end: pd.Timestamp, detected_at: pd.Timestamp
+    ) -> bool:
+        """Persist a runtime-detected outage; True if it was new."""
+        cur = self.conn.execute(
+            "INSERT INTO outages VALUES (?, ?, ?, ?) ON CONFLICT(symbol, start) DO NOTHING",
+            (symbol, _iso(start), _iso(end), _iso(detected_at)),
+        )
+        return cur.rowcount > 0
+
+    def outages(self, symbol: str) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+        rows = self.conn.execute(
+            "SELECT start, end FROM outages WHERE symbol = ? ORDER BY start", (symbol,)
+        ).fetchall()
+        return [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in rows]
 
     def add_event(self, time: pd.Timestamp, kind: str, message: str) -> None:
         self.conn.execute(
