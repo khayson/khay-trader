@@ -48,6 +48,7 @@ class FakeExchange:
         self.clock_skew = pd.Timedelta(0)  # exchange clock minus ours
         self.amount_step = 1e-12  # lot size; tiny so replay quantities match the engine
         self.min_cost = 0.0  # minimum notional
+        self.hidden_hours: set[pd.Timestamp] = set()  # 1h candles not (yet) published
         self.frames = {
             s: {"1m": m, "1h": resample(m, "1h", MINUTE), "4h": resample(m, "4h", MINUTE)}
             for s, m in minutes.items()
@@ -72,6 +73,8 @@ class FakeExchange:
         visible = df[df["timestamp"] <= self.now]  # includes the forming candle (open only used)
         if self.feed_cutoff is not None and timeframe != "1m":
             visible = visible[visible["timestamp"] < self.feed_cutoff]
+        if timeframe == "1h" and self.hidden_hours:
+            visible = visible[~visible["timestamp"].isin(self.hidden_hours)]
         if since is not None:
             visible = visible[visible["timestamp"] >= pd.Timestamp(since, unit="ms", tz="UTC")]
         visible = visible.head(limit or 1000)

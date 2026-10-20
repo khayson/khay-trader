@@ -89,6 +89,25 @@ def test_unknown_outage_is_detected_persisted_and_survived(tmp_path: Path) -> No
     assert FIRST_WAKE + 20 * STEP in set(bars["timestamp"])
 
 
+def test_late_candle_resolves_runtime_outage(tmp_path: Path) -> None:
+    w = make_world(tmp_path)
+    hole = FIRST_WAKE + 3 * STEP + HOUR
+    w.fx.hidden_hours = {hole}
+    w.run(FIRST_WAKE, FIRST_WAKE + 5 * STEP)
+    assert w.journal.outages(SYMBOLS[0]) == [(hole, hole)]
+    w.fx.hidden_hours = set()  # the exchange publishes it late
+    w.run(FIRST_WAKE + 6 * STEP, FIRST_WAKE + 7 * STEP)
+    assert w.journal.outages(SYMBOLS[0]) == []
+    assert "outage_resolved" in kinds(w)
+    candles = store.load(store.candle_path(w.settings.data_dir, SYMBOLS[0], "1h"))
+    assert hole in set(candles["timestamp"])
+    bars = resample(candles, "4h", HOUR, [store.Gap(hole, hole, 1)])  # stale outage list
+    bar = bars.set_index("timestamp").loc[FIRST_WAKE + 3 * STEP]
+    m = MINUTES[SYMBOLS[0]]
+    in_bar = m[(m["timestamp"] >= FIRST_WAKE + 3 * STEP) & (m["timestamp"] < FIRST_WAKE + 4 * STEP)]
+    assert bar["volume"] == pytest.approx(in_bar["volume"].sum())  # all four hours
+
+
 # --- B4: divergence classification -------------------------------------------------------
 
 

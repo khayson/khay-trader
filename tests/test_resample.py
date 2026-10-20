@@ -75,3 +75,11 @@ def test_daily_is_midnight_aligned() -> None:
 def test_rejects_non_multiple_rule() -> None:
     with pytest.raises(ValueError):
         resample(hourly([0, 1]), "90min", HOUR)
+
+
+def test_outage_hours_that_are_present_do_not_drop_the_bar() -> None:
+    # A runtime outage was recorded for hour 5, then its candle arrived after all.
+    outage = store.Gap(start=T0 + 5 * HOUR, end=T0 + 5 * HOUR, missing=1)
+    out = resample(hourly(list(range(12))), "4h", HOUR, [outage])
+    assert list(out["timestamp"]) == [T0, T0 + 4 * HOUR, T0 + 8 * HOUR]
+    assert out.iloc[1]["volume"] == 4.0

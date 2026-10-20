@@ -280,6 +280,11 @@ class Journal:
         )
         return cur.rowcount > 0
 
+    def delete_outage(self, symbol: str, start: pd.Timestamp) -> None:
+        self.conn.execute(
+            "DELETE FROM outages WHERE symbol = ? AND start = ?", (symbol, _iso(start))
+        )
+
     def outages(self, symbol: str) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
         rows = self.conn.execute(
             "SELECT start, end FROM outages WHERE symbol = ? ORDER BY start", (symbol,)

@@ -231,29 +231,29 @@ class PaperLoop:
     def _new_outages(
         self, symbol: str, candles: pd.DataFrame, now: pd.Timestamp
     ) -> tuple[pd.DataFrame, list[store.Gap]]:
-        """Missing hours in the history window that are not known outages: refetch once;
-        whatever the exchange still does not return is a new (runtime) outage."""
+        """Missing hours in the history window that are not documented outages are
+        refetched, on every wake, so a candle published late still arrives. Runtime
+        outages whose hours have since appeared are removed from the journal; whatever is
+        still missing and not yet recorded is a new runtime outage."""
         window = now - pd.Timedelta(hours=self.s.history_hours)
-        known = {(g.start, g.end) for g in self._outages(symbol)}
-        recent = candles[candles["timestamp"] >= window]
-        new = []
-        for g in store.find_gaps(recent, HOUR):
-            if (g.start, g.end) in known:
+        documented = {(g.start, g.end) for g in self.s.outages.get(symbol, ())}
+        for g in store.find_gaps(candles[candles["timestamp"] >= window], HOUR):
+            if (g.start, g.end) in documented:
                 continue
             refetched = fetch_ohlcv(self.ex, symbol, "1h", g.start, g.end + HOUR)
-            if refetched.empty:
-                new.append(g)
-                continue
-            candles = store.merge(candles, refetched)
-            store.save(candles, store.candle_path(self.s.data_dir, symbol, "1h"), HOUR)
-            new += store.find_gaps(
-                candles[
-                    (candles["timestamp"] >= g.start - HOUR)
-                    & (candles["timestamp"] <= g.end + HOUR)
-                ],
-                HOUR,
-            )
-        return candles, new
+            if not refetched.empty:
+                candles = store.merge(candles, refetched)
+                store.save(candles, store.candle_path(self.s.data_dir, symbol, "1h"), HOUR)
+        present = set(candles["timestamp"])
+        for a, b in self.j.outages(symbol):
+            if any(t in present for t in pd.date_range(a, b, freq=HOUR)):
+                self.j.delete_outage(symbol, a)
+                message = f"{symbol}: candles for runtime outage {a} .. {b} arrived; removed"
+                self.j.add_event(now, "outage_resolved", message)
+                log.warning(message)
+        recorded = set(self.j.outages(symbol))
+        remaining = store.find_gaps(candles[candles["timestamp"] >= window], HOUR)
+        return candles, [g for g in remaining if (g.start, g.end) not in documented | recorded]
 
     def _market(
         self, now: pd.Timestamp
