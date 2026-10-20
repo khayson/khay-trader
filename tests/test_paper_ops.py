@@ -352,6 +352,8 @@ def test_alerts_never_log_urls(caplog: pytest.LogCaptureFixture) -> None:
     alerter = Alerter(webhook=hook_url, deadman=hook_url + "/ping", sender=sent.append)
     caplog.set_level(logging.DEBUG)
     alerter.alert("kill switch tripped", "drawdown 10%")
+    assert sent == []  # queued, not delivered while a transaction may be open
+    alerter.flush()
     alerter.ping()
     assert len(sent) == 2
     body = json.loads(sent[0].data)  # type: ignore[arg-type]
@@ -360,7 +362,9 @@ def test_alerts_never_log_urls(caplog: pytest.LogCaptureFixture) -> None:
     def broken(_: urllib.request.Request) -> None:
         raise OSError(hook_url)
 
-    Alerter(webhook=hook_url, sender=broken).alert("x", "y")  # swallowed
+    failing = Alerter(webhook=hook_url, sender=broken)
+    failing.alert("x", "y")
+    failing.flush()  # delivery error swallowed, URL not logged
     assert "hook-1234" not in caplog.text
 
 
@@ -372,6 +376,15 @@ def test_dead_man_pinged_on_every_tick(tmp_path: Path) -> None:
     for k in range(1, 4):
         w.loop.tick(FIRST_WAKE + k * pd.Timedelta(minutes=1))
     assert len(sent) == 4  # one per wake and one per tick
+
+
+def test_alert_history_is_bounded() -> None:
+    alerter = Alerter()
+    for k in range(1000):
+        alerter.alert("t", str(k))
+    alerter.flush()
+    assert alerter.pending == [] and len(alerter.sent) == 200
+    assert alerter.sent[-1] == ("t", "999")
 
 
 def test_fake_exchange_is_deterministic() -> None:

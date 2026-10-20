@@ -156,15 +156,18 @@ class Settings:
 
 
 def feature_frame(
-    candles: pd.DataFrame, feature_start: pd.Timestamp, candidate: Candidate,
+    candles: pd.DataFrame,
+    feature_start: pd.Timestamp,
+    candidate: Candidate,
     outages: Sequence[store.Gap],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Bars and features from a FIXED start. The slow EMA keeps a trace of its first value,
     so features must not depend on how much older history the store happens to hold
     (e.g. after a manual backfill that prepends data): otherwise every decision bar would
     look "revised" to the divergence monitor and excuse every mismatch."""
-    bars = resample(candles[candles["timestamp"] >= feature_start], candidate.timeframe, HOUR,
-                    outages)
+    bars = resample(
+        candles[candles["timestamp"] >= feature_start], candidate.timeframe, HOUR, outages
+    )
     return bars, features(bars, pd.Timedelta(candidate.timeframe), candidate.params)
 
 
@@ -300,8 +303,9 @@ class PaperLoop:
             if feature_start is None:  # pinned at first use: the store's first candle
                 feature_start = pd.Timestamp(candles["timestamp"].iloc[0])
                 self.j.set(key, feature_start)
-            bars[s], feats[s] = feature_frame(candles, feature_start, self.s.candidate,
-                                              self._outages(s) + new[s])
+            bars[s], feats[s] = feature_frame(
+                candles, feature_start, self.s.candidate, self._outages(s) + new[s]
+            )
         return bars, feats, new
 
     def _ref_price(self, symbol: str, t: pd.Timestamp, now: pd.Timestamp) -> float:
@@ -369,6 +373,13 @@ class PaperLoop:
     # --- one wake ----------------------------------------------------------------------
 
     def step(self, now: pd.Timestamp) -> None:
+        """One wake; alerts raised during it are sent afterwards, outside any transaction."""
+        try:
+            self._step(now)
+        finally:
+            self.alerter.flush()
+
+    def _step(self, now: pd.Timestamp) -> None:
         """One wake. API/data errors are retried, recorded and counted once per slot; the
         scheduler retries the slot a minute later. Other errors propagate (crashes)."""
         self.j.set("heartbeat", now)
@@ -720,8 +731,9 @@ class PaperLoop:
         unclean |= divergence.revised_bars(decisions, feats)
         declined = decisions["risk"].fillna("").str.startswith(OPERATIONAL_REJECTIONS)
         unclean |= set(decisions.loc[declined, "bar_close"])
-        recent = set(decisions.loc[decisions["bar_close"] >= now - pd.Timedelta(days=30),
-                                   "bar_close"])
+        recent = set(
+            decisions.loc[decisions["bar_close"] >= now - pd.Timedelta(days=30), "bar_close"]
+        )
         excused = len(recent & unclean) / len(recent) if recent else 0.0
         unexplained, explained = divergence.compare(
             self.j.frame("trades"),
@@ -758,9 +770,11 @@ class PaperLoop:
                 if self.s.flatten_on_trip:
                     self._flatten(now, None)  # flatten now, not at the next bar
             if excused > 0.10:  # the monitor would excuse too much to be meaningful
-                message = (f"{excused:.0%} of decision bars in the last 30 days are unclean "
-                           "(missed/late/stale wakes, outages, revisions, declined entries); "
-                           "divergence checks are mostly excused")
+                message = (
+                    f"{excused:.0%} of decision bars in the last 30 days are unclean "
+                    "(missed/late/stale wakes, outages, revisions, declined entries); "
+                    "divergence checks are mostly excused"
+                )
                 self.j.add_event(now, "divergence_overexcused", message)
                 self.alerter.alert("divergence monitor over-excusing", message)
             text = report.describe(self.s.costs.slippage)
@@ -799,6 +813,12 @@ class PaperLoop:
     # --- minute ticks and scheduling ---------------------------------------------------
 
     def tick(self, now: pd.Timestamp) -> None:
+        try:
+            self._tick(now)
+        finally:
+            self.alerter.flush()
+
+    def _tick(self, now: pd.Timestamp) -> None:
         """Between wakes: poll resting stops (never past the newest decided bar, so fills
         match the replay) and flatten promptly if the kill switch tripped. Pings the
         dead-man URL every minute so a dead machine is noticed within minutes."""
@@ -841,6 +861,7 @@ class PaperLoop:
                 if crashes >= MAX_CRASHES:
                     state = ks.load(self.s.ks_path)
                     self._save_ks(state, ks.trip(state, f"{crashes} consecutive crashes", now), now)
+                self.alerter.flush()
         else:
             self.tick(now)
         next_minute = now.floor("1min") + MINUTE + pd.Timedelta(seconds=2)
@@ -993,7 +1014,9 @@ def status_main(argv: list[str] | None = None) -> int:
         print(f"event {e.time} {e.kind}: {e.message}")
     j.close()
     if args.check_heartbeat and stale:
-        Alerter.from_env().alert("stale heartbeat", f"last heartbeat {heartbeat} (age {age})")
+        alerter = Alerter.from_env()
+        alerter.alert("stale heartbeat", f"last heartbeat {heartbeat} (age {age})")
+        alerter.flush()
         return 1
     return 0
 

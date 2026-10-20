@@ -37,12 +37,15 @@ def decisions_from(feats: pd.DataFrame, n: int = 300) -> pd.DataFrame:
     """Decision rows as the loop journals them, for the first n ready bars: just after the
     500-bar warmup, where the EMA seed still weighs most (the hardest case)."""
     ready = feats[feats["ready"]].head(n)
-    return pd.DataFrame({
-        "symbol": "BTC/USDT",
-        "bar_close": ready.index,
-        "features": [json.dumps({f: float(row[f]) for f in FEATURES})
-                     for _, row in ready.iterrows()],
-    })
+    return pd.DataFrame(
+        {
+            "symbol": "BTC/USDT",
+            "bar_close": ready.index,
+            "features": [
+                json.dumps({f: float(row[f]) for f in FEATURES}) for _, row in ready.iterrows()
+            ],
+        }
+    )
 
 
 pytestmark = pytest.mark.skipif(not available(), reason="needs BTC 1h candles from mid-2022")
@@ -55,8 +58,9 @@ def candles() -> pd.DataFrame:
 
 
 @pytest.mark.parametrize("earlier", [HOUR, 4 * HOUR, 24 * HOUR])
-def test_more_history_in_the_store_changes_nothing(candles: pd.DataFrame,
-                                                   earlier: pd.Timedelta) -> None:
+def test_more_history_in_the_store_changes_nothing(
+    candles: pd.DataFrame, earlier: pd.Timedelta
+) -> None:
     a = candidate_a()
     _, base = feature_frame(candles[candles["timestamp"] >= START], START, a, [])
     _, wider = feature_frame(candles[candles["timestamp"] >= START - earlier], START, a, [])
