@@ -106,6 +106,11 @@ the open. It warns when the total exceeds 3x the model over at least 10 fills.
 
 ## What to look at
 
+- Dashboard: `.venv\Scripts\python tools\dashboard\dashboard.py`, then open
+  http://127.0.0.1:8765. Read-only (it opens the journal with SQLite's read-only mode and
+  has no controls), separate from the loop, and bound to 127.0.0.1 only. On a server, use an
+  SSH tunnel: `ssh -L 8765:127.0.0.1:8765 <server>`. `--html out.html` writes one static page.
+
 - `trader-status`: heartbeat, kill switch, cash, positions with stops, missed wakes,
   recent decisions and events.
 - `data/paper/paper.db` (SQLite): decisions (with features), fills (price, modeled price,

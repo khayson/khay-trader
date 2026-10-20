@@ -44,7 +44,8 @@ select = ["E", "F", "I", "B", "UP", "DTZ"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "tools"]
+mypy_path = "tools/dashboard"
 
 [[tool.mypy.overrides]]
 module = ["ccxt", "ccxt.*"]
