@@ -20,6 +20,8 @@ trader-backfill = "trader.data.fetch:main"
 trader-backtest = "trader.backtest.report:main"
 trader-research = "trader.backtest.research:main"
 trader-killswitch = "trader.risk.killswitch:main"
+trader-run = "trader.loop:main"
+trader-status = "trader.loop:status_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -30,6 +32,8 @@ packages = ["src/trader"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = ["slow: long real-data replays; run `pytest -m slow` before every merge to main"]
 
 [tool.ruff]
 line-length = 100

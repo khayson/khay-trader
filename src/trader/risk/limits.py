@@ -85,11 +85,12 @@ def entry_headroom(account: Account, symbol: str, limits: RiskLimits) -> float:
     return max(0.0, min(by_position, by_total))
 
 
-def overcap_symbols(account: Account, limits: RiskLimits) -> list[str]:
-    """Positions that grew past the position cap after fill; logs a warning for each."""
+def overcap_symbols(account: Account, limits: RiskLimits, log_warnings: bool = True) -> list[str]:
+    """Positions that grew past the position cap after fill; optionally logs a warning for
+    each (callers that run every bar throttle the warning themselves)."""
     cap = account.equity * limits.max_position_pct / 100
     over = sorted(s for s, v in account.position_values.items() if not _within(v, cap))
-    for s in over:
+    for s in over if log_warnings else []:
         log.warning(
             "%s is %.2f%% of equity, over the %s%% cap; no auto-trim, new entries blocked",
             s,

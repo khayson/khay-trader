@@ -29,13 +29,18 @@ def resample(
     )
     count = grouped["close"].count()
 
-    outage_times = [t for g in outages for t in pd.date_range(g.start, g.end, freq=base_step)]
+    # Only outage hours that are actually missing count: a candle that arrived after its
+    # outage was recorded must not be counted twice (that would drop the whole bar).
+    listed = pd.DatetimeIndex(
+        [t for g in outages for t in pd.date_range(g.start, g.end, freq=base_step)], tz="UTC"
+    )
+    outage_times = listed.difference(pd.DatetimeIndex(df["timestamp"]))
     outage_count = (
         pd.Series(1, index=pd.DatetimeIndex(outage_times, tz="UTC"))
         .resample(step, origin="epoch")
         .sum()
         .reindex(out.index, fill_value=0)
-        if outage_times
+        if len(outage_times)
         else 0
     )
     keep = (count > 0) & (count + outage_count == per_bar)
