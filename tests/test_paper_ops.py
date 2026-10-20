@@ -157,6 +157,16 @@ def test_too_many_missed_wakes_block_entries_without_flattening(
     assert not ks.load(w.settings.ks_path).tripped
 
 
+def test_over_excusing_divergence_monitor_alerts(tmp_path: Path) -> None:
+    w = make_world(tmp_path)
+    w.run(FIRST_WAKE, FIRST_WAKE + 2 * STEP)
+    w.run(FIRST_WAKE + 6 * STEP, FIRST_WAKE + 20 * STEP)  # 3 of ~20 slots missed
+    force_divergence_check(w)
+    w.wake(FIRST_WAKE + 21 * STEP)
+    assert "divergence_overexcused" in kinds(w)
+    assert any(t == "divergence monitor over-excusing" for t, _ in w.loop.alerter.sent)
+
+
 def test_revised_bars_detects_changed_features() -> None:
     t1, t2 = pd.Timestamp("2025-01-01 04:00", tz="UTC"), pd.Timestamp("2025-01-01 08:00", tz="UTC")
     feats = {"X": pd.DataFrame({"close": [1.0, 2.0], "atr": [0.1, 0.2]}, index=[t1, t2])}

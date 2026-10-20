@@ -155,6 +155,19 @@ class Settings:
         )
 
 
+def feature_frame(
+    candles: pd.DataFrame, feature_start: pd.Timestamp, candidate: Candidate,
+    outages: Sequence[store.Gap],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Bars and features from a FIXED start. The slow EMA keeps a trace of its first value,
+    so features must not depend on how much older history the store happens to hold
+    (e.g. after a manual backfill that prepends data): otherwise every decision bar would
+    look "revised" to the divergence monitor and excuse every mismatch."""
+    bars = resample(candles[candles["timestamp"] >= feature_start], candidate.timeframe, HOUR,
+                    outages)
+    return bars, features(bars, pd.Timedelta(candidate.timeframe), candidate.params)
+
+
 def _ms(ts: pd.Timestamp) -> int:
     return int(ts.timestamp() * 1000)
 
@@ -282,8 +295,13 @@ class PaperLoop:
         for s in self.s.symbols:
             candles = backfill(self.ex, s, "1h", start, self.s.data_dir, now)
             candles, new[s] = self._new_outages(s, candles, now)
-            bars[s] = resample(candles, self.s.candidate.timeframe, HOUR, self._outages(s) + new[s])
-            feats[s] = features(bars[s], self.step_td, self.s.candidate.params)
+            key = f"feature_start:{s}"
+            feature_start = self.j.get_time(key)
+            if feature_start is None:  # pinned at first use: the store's first candle
+                feature_start = pd.Timestamp(candles["timestamp"].iloc[0])
+                self.j.set(key, feature_start)
+            bars[s], feats[s] = feature_frame(candles, feature_start, self.s.candidate,
+                                              self._outages(s) + new[s])
         return bars, feats, new
 
     def _ref_price(self, symbol: str, t: pd.Timestamp, now: pd.Timestamp) -> float:
@@ -702,6 +720,9 @@ class PaperLoop:
         unclean |= divergence.revised_bars(decisions, feats)
         declined = decisions["risk"].fillna("").str.startswith(OPERATIONAL_REJECTIONS)
         unclean |= set(decisions.loc[declined, "bar_close"])
+        recent = set(decisions.loc[decisions["bar_close"] >= now - pd.Timedelta(days=30),
+                                   "bar_close"])
+        excused = len(recent & unclean) / len(recent) if recent else 0.0
         unexplained, explained = divergence.compare(
             self.j.frame("trades"),
             self.j.positions(),
@@ -736,6 +757,12 @@ class PaperLoop:
                 self._save_ks(state, ks.trip(state, message, now), now)
                 if self.s.flatten_on_trip:
                     self._flatten(now, None)  # flatten now, not at the next bar
+            if excused > 0.10:  # the monitor would excuse too much to be meaningful
+                message = (f"{excused:.0%} of decision bars in the last 30 days are unclean "
+                           "(missed/late/stale wakes, outages, revisions, declined entries); "
+                           "divergence checks are mostly excused")
+                self.j.add_event(now, "divergence_overexcused", message)
+                self.alerter.alert("divergence monitor over-excusing", message)
             text = report.describe(self.s.costs.slippage)
             self.j.add_event(now, "slippage_warning" if report.warn else "slippage", text)
             if report.warn:
