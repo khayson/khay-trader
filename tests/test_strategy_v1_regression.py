@@ -24,6 +24,7 @@ ROOT = Path(__file__).parent.parent
 EXPECTED = ROOT / "reports" / "research_round1_2026-10-19_trades_A.csv"
 PATHS = {s: store.candle_path(ROOT / "data", s, "1h") for s in ["BTC/USDT", "ETH/USDT"]}
 HOUR = pd.Timedelta(hours=1)
+ROUND1_DATA_END = pd.Timestamp("2026-10-19 22:00", tz="UTC")  # see the round-1 report
 
 
 def data_available() -> bool:
@@ -55,7 +56,9 @@ def test_candidate_a_trades_unchanged() -> None:
         INITIAL_EQUITY, Costs.from_config(cfg), True, RiskLimits.from_config(cfg)
     )
     expected = pd.read_csv(EXPECTED)
-    data_end = min(store.load(p)["timestamp"].iloc[-1] for p in PATHS.values()) + HOUR
+    # Round 1's open-ended test split ended where its data ended; pin it so newer candles
+    # (the paper loop keeps the store fresh) do not add trades.
+    data_end = ROUND1_DATA_END
     for name, (start, end) in protocol["splits"].items():
         end_ts = data_end if end is None else pd.Timestamp(end, tz="UTC")
         res = run(data, feats, strategy, engine_cfg, pd.Timestamp(start, tz="UTC"), end_ts, step)
