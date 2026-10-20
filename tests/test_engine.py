@@ -7,6 +7,7 @@ import yaml
 
 from trader.backtest.costs import ZERO, Costs
 from trader.backtest.engine import EngineConfig, Result, run
+from trader.risk.limits import RiskLimits
 from trader.state import snapshot as snap
 from trader.state.snapshot import FeatureParams, Snapshot
 from trader.strategy.base import Action, Intent, Position
@@ -26,6 +27,13 @@ TOY_PARAMS = FeatureParams(
 )  # warmup 169 bars (7d return)
 CONFIG = yaml.safe_load((Path(__file__).parent.parent / "config" / "default.yaml").read_text())
 SYM = "X/USDT"
+
+
+def loose(max_pos: float = 100, max_total: float = 100) -> RiskLimits:
+    """Caps only: daily-loss and order-rate limits far out of the way."""
+    return RiskLimits(
+        max_pos, max_total, max_daily_loss_pct=100, max_orders_per_hour=1000, stale_data_seconds=0
+    )
 
 
 def candles(
@@ -71,7 +79,7 @@ def run_one(
     max_pos: float = 100,
     max_total: float = 100,
 ) -> Result:
-    cfg = EngineConfig(10_000.0, costs, intrabar, max_pos, max_total)
+    cfg = EngineConfig(10_000.0, costs, intrabar, loose(max_pos, max_total))
     feats = {SYM: snap.features(df, HOUR, TOY_PARAMS)}
     start, end = df["timestamp"].iloc[0], df["timestamp"].iloc[-1] + HOUR
     return run({SYM: df}, feats, strategy, cfg, start, end, HOUR)  # type: ignore[arg-type]
@@ -155,7 +163,7 @@ def run_pairs(
     max_pos: float = 10,
     max_total: float = 15,
 ) -> Result:
-    cfg = EngineConfig(10_000.0, COSTS, intrabar, max_pos, max_total)
+    cfg = EngineConfig(10_000.0, COSTS, intrabar, loose(max_pos, max_total))
     start = T0
     end = end if end is not None else T0 + 4000 * HOUR
     return run(PAIRS, FEATS, BASELINE, cfg, start, end, HOUR)
@@ -235,9 +243,26 @@ def test_stop_checked_at_first_open_after_gap() -> None:
 def test_per_symbol_strategies() -> None:
     flat = [100.0] * 200
     df = candles(flat, flat)
-    cfg = EngineConfig(10_000.0, COSTS, True, 100, 100)
+    cfg = EngineConfig(10_000.0, COSTS, True, loose())
     pairs = {"A/USDT": df, "B/USDT": df}
     feats = {s: snap.features(df, HOUR, TOY_PARAMS) for s in pairs}
     strategies = {"A/USDT": Script({180: (1, 50)}, set()), "B/USDT": Script({}, set())}
     res = run(pairs, feats, strategies, cfg, T0, T0 + 200 * HOUR, HOUR)
     assert set(res.fills["symbol"]) == {"A/USDT"}
+
+
+def test_clipped_and_dropped_entries_are_recorded() -> None:
+    flat = [100.0] * 200
+    df = candles(flat, flat)
+    # 50 units = 5,000 notional > 10% cap -> clipped; second symbol finds no total headroom
+    cfg = EngineConfig(10_000.0, ZERO, True, loose(max_pos=10, max_total=10))
+    pairs = {"A/USDT": df, "B/USDT": df}
+    feats = {s: snap.features(df, HOUR, TOY_PARAMS) for s in pairs}
+    strategies = {"A/USDT": Script({180: (50, 50)}, set()), "B/USDT": Script({180: (5, 50)}, set())}
+    res = run(pairs, feats, strategies, cfg, T0, T0 + 200 * HOUR, HOUR)
+    rej = res.rejections.set_index("symbol")
+    assert rej.loc["A/USDT", "kind"] == "clipped"
+    assert rej.loc["A/USDT", "reason"] == "clipped from 50 to 10"
+    assert rej.loc["B/USDT", "kind"] == "dropped"
+    assert rej.loc["B/USDT", "reason"] == "no headroom"
+    assert list(res.fills.loc[res.fills["side"] == "buy", "symbol"]) == ["A/USDT"]

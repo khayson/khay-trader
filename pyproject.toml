@@ -19,6 +19,7 @@ dev = [
 trader-backfill = "trader.data.fetch:main"
 trader-backtest = "trader.backtest.report:main"
 trader-research = "trader.backtest.research:main"
+trader-killswitch = "trader.risk.killswitch:main"
 
 [build-system]
 requires = ["hatchling"]

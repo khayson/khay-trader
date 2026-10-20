@@ -5,13 +5,16 @@ timeframe: 1h
 fees_per_side: 0.001        # 0.10%
 slippage_per_side: 0.0005   # 0.05%
 risk:
-  max_drawdown_pct: 15      # from equity peak -> kill switch trips
+  max_drawdown_pct: 10      # from equity peak -> kill switch trips (~1.5x v1's worst backtest DD)
   max_position_pct: 10      # per pair, of equity
   max_total_exposure_pct: 20
   max_daily_loss_pct: 2
   risk_per_trade_pct: 0.5
   max_orders_per_hour: 6
-  stale_data_seconds: 180   # no trading on stale data
+  stale_data_seconds: 180   # act on a closed bar only within this many seconds of its close
+  max_consecutive_api_errors: 5   # kill switch trips after this many in a row
+  killswitch_state: data/state/killswitch.json  # missing or corrupt = tripped (fail closed)
+  flatten_on_trip: true     # on trip: market-sell positions, cancel each stop after its sell fills
 features:
   ema_fast: 50
   ema_slow: 200
@@ -24,3 +27,5 @@ strategy:                   # baseline, SPEC section 5. Defaults chosen a priori
   atr_pct_min: 0.2          # ATR as % of close; below = dead market
   atr_pct_max: 3.0          # above = disorderly market
   stop_atr_mult: 3.0        # initial and trailing stop distance, in ATRs
+paper:
+  stop_slippage: 0.0015     # stop-market fills (3x the 0.05% model; see reports/stop_slippage_sensitivity.md)

@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -73,3 +74,13 @@ def test_random_entry_matches_holding_times_and_is_seeded() -> None:
     np.testing.assert_array_equal(a, b)
     # Rising prices, no costs: every random long trade wins.
     assert (a > 0).all()
+
+
+def test_text_hash_ignores_line_endings(tmp_path: Path) -> None:
+    lf, crlf = tmp_path / "a.yaml", tmp_path / "b.yaml"
+    lf.write_bytes(b"seed: 42\nmc_runs: 1000\n")
+    crlf.write_bytes(b"seed: 42\r\nmc_runs: 1000\r\n")
+    assert report._sha256(lf) == report._sha256(crlf)
+    binary = tmp_path / "c.parquet"
+    binary.write_bytes(b"PAR1\r\n")
+    assert report._sha256(binary) == hashlib.sha256(b"PAR1\r\n").hexdigest()  # untouched

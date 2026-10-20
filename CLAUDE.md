@@ -14,4 +14,5 @@ SPEC.md is the source of truth. Implement one phase at a time; stop for review a
 - Tests: `.venv/Scripts/python -m pytest`
 - Lint/types: `.venv/Scripts/python -m ruff check . && .venv/Scripts/python -m mypy`
 - Backfill candles: `.venv/Scripts/trader-backfill --years 2`
+- Kill switch: `.venv/Scripts/trader-killswitch status|trip --reason R|rearm --reason R --equity E` (missing state = tripped)
 - Research round 1 (pre-registered, config/research_round1.yaml): `.venv/Scripts/trader-research` (test split only with `--unlock-test`)

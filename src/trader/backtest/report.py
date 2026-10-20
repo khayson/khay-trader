@@ -23,6 +23,7 @@ from trader.backtest import metrics
 from trader.backtest.costs import ZERO, Costs
 from trader.backtest.engine import EngineConfig, Result, run
 from trader.data import store
+from trader.risk.limits import RiskLimits
 from trader.state.snapshot import FeatureParams, features
 from trader.strategy.baseline import Baseline, BaselineParams
 
@@ -226,8 +227,7 @@ def build_report(
                     INITIAL_EQUITY,
                     costs if on else ZERO,
                     intrabar,
-                    risk["max_position_pct"],
-                    risk["max_total_exposure_pct"],
+                    RiskLimits.from_config(cfg),
                 ),
                 split.start,
                 split.end,
@@ -298,8 +298,16 @@ def build_report(
     return "\n".join(lines), trades
 
 
+_TEXT_SUFFIXES = {".yaml", ".yml", ".md", ".csv", ".json", ".txt", ".py"}
+
+
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """sha256 of a file. Text files are hashed with CRLF normalized to LF so the hash is
+    the same on any OS whatever git's line-ending conversion did; binary files as-is."""
+    data = path.read_bytes()
+    if path.suffix.lower() in _TEXT_SUFFIXES:
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def _git_commit() -> str:

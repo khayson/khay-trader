@@ -91,7 +91,7 @@ Candidate A from research round 1 (`reports/research_round1_2026-10-19.md`). Fro
 ## 6. Hard risk rules (code only, never delegated to a model)
 
 1. Pre-trade check on every order: position cap, exposure cap, daily loss, order rate, data freshness.
-2. Kill switch: trips on max drawdown, repeated API errors, or manual command. When tripped, cancel open orders, flatten (live) or stop (paper), and refuse new orders until manually re-armed.
+2. Kill switch: trips on max drawdown, repeated API errors, divergence from the backtest, or manual command. When tripped it refuses new entries until manually re-armed, and it never cancels protective stops on its own: positions stay protected. With `risk.flatten_on_trip: true` (default) each position is flattened with a market sell, and its stop is cancelled only after that sell has filled. Paper and live behave the same way.
 3. Kill switch state persists across restarts.
 4. Risk module has no dependency on the LLM or strategy modules.
 5. Live mode requires `mode: live` and env var `TRADER_LIVE_CONFIRM=yes` and a tiny capital cap in config.
