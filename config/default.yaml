@@ -32,13 +32,17 @@ paper:
   strategy_protocol: config/research_round1.yaml  # strategy v1 = candidate A (frozen)
   strategy_candidate: A
   known_gaps: config/known_gaps.yaml
-  initial_equity: 10000
+  initial_equity: 10000     # SET THIS to the amount you would live-trade and can lose entirely
+                            # (env TRADER_PAPER_EQUITY overrides); lot sizes/minimums are tested at this scale
   data_dir: data            # 1h candle store, shared with research
   db: data/paper/paper.db   # SQLite journal (gitignored with data/)
   lock: data/paper/trader.lock
   log_dir: data/paper/logs
   history_hours: 2600       # minimum 1h history kept fresh (warmup is 500 4h bars = 2000h)
-  wake_delay_seconds: 5     # after each 4h bar close
+  wake_delay_seconds: 10    # after each 4h bar close (lets the last 1h candle settle)
+  clock_skew_max_seconds: 2 # entries skipped if our clock differs from the exchange's by more
+  missed_wake_max: 2        # more missed wakes than this in the window blocks entries and alerts
+  missed_wake_window_days: 7
   parity_bars: 30           # recent bars checked against native 4h klines each wake
   divergence_min_fills: 10
   divergence_slippage_mult: 3
