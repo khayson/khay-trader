@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 import ccxt
 import pandas as pd
@@ -133,3 +135,18 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def retry_call[T](
+    fn: Callable[..., T], *args: Any, delays: Sequence[float] = (5.0, 25.0), **kwargs: Any
+) -> T:
+    """Call an exchange function, retrying transient network errors after each delay
+    (default 3 tries over about 30s). Other errors propagate immediately."""
+    for delay in (*delays, None):
+        try:
+            return fn(*args, **kwargs)
+        except ccxt.NetworkError:
+            if delay is None:
+                raise
+            time.sleep(delay)
+    raise AssertionError("unreachable")
