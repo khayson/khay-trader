@@ -91,6 +91,10 @@ class MarketDataError(Exception):
     """Exchange data missing or inconsistent; handled like an API error."""
 
 
+class EquityMismatch(Exception):
+    """Configured initial equity differs from the one this journal was started with."""
+
+
 class StaleFeedRetry(MarketDataError):
     """The newest bar is not published yet; retry the wake (not an API error)."""
 
@@ -178,9 +182,18 @@ class PaperLoop:
         self.clock = clock
         self.step_td = pd.Timedelta(settings.candidate.timeframe)
         self.strategy = settings.candidate.strategy(settings.sizing)
-        if self.j.get("cash") is None:
+        pinned = self.j.get_float("initial_equity")
+        if pinned is None:  # first start: pin it; the replay and P&L are relative to it
             with self.j.transaction():
-                self.j.set("cash", settings.initial_equity)
+                self.j.set("initial_equity", settings.initial_equity)
+                if self.j.get("cash") is None:
+                    self.j.set("cash", settings.initial_equity)
+        elif pinned != settings.initial_equity:
+            raise EquityMismatch(
+                f"this journal started with initial equity {pinned:.2f} but the config / "
+                f"TRADER_PAPER_EQUITY now says {settings.initial_equity:.2f}; restore the "
+                "original value, or start a new paper run with a new journal"
+            )
         self.restore()
 
     # --- state -------------------------------------------------------------------------
@@ -191,6 +204,12 @@ class PaperLoop:
             self.broker.cancel_stop(symbol)
         for p in self.j.positions().values():
             self.broker.set_stop(p.symbol, p.qty, p.stop_price)
+
+    @property
+    def initial_equity(self) -> float:
+        value = self.j.get_float("initial_equity")
+        assert value is not None
+        return value
 
     @property
     def cash(self) -> float:
@@ -672,7 +691,7 @@ class PaperLoop:
             self.strategy,
             self.s.costs,
             self.s.limits,
-            self.s.initial_equity,
+            self.initial_equity,
             paper_start,
             last_close,
             self.step_td,
@@ -883,13 +902,17 @@ def main(argv: list[str] | None = None) -> int:
         exchange = getattr(ccxt, cfg["exchange"])({"enableRateLimit": True})
         journal = Journal(Path(paper["db"]))
         broker = PaperBroker(exchange, settings.costs, retry_delays=settings.retry_delays)
-        loop = PaperLoop(settings, exchange, journal, broker, Alerter.from_env())
+        try:
+            loop = PaperLoop(settings, exchange, journal, broker, Alerter.from_env())
+        except EquityMismatch as e:
+            print(f"refusing to start: {e}")
+            return 2
         log.info(
             "paper loop starting (%s): commit %s, config sha256 %s, equity %.2f",
             "once" if args.once else "forever",
             state[0],
             config_hash,
-            settings.initial_equity,
+            loop.initial_equity,
         )
         journal.add_event(_utcnow(), "start", f"commit {state[0]} config {config_hash}")
         if args.once:

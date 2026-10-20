@@ -7,6 +7,7 @@ import json
 import logging
 import subprocess
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -30,7 +31,7 @@ from trader.data.resample import resample
 from trader.exec import divergence
 from trader.exec.alerts import Alerter
 from trader.exec.journal import PositionRow
-from trader.loop import git_state
+from trader.loop import EquityMismatch, PaperLoop, git_state
 from trader.risk import killswitch as ks
 from trader.state.snapshot import features
 
@@ -106,6 +107,16 @@ def test_late_candle_resolves_runtime_outage(tmp_path: Path) -> None:
     m = MINUTES[SYMBOLS[0]]
     in_bar = m[(m["timestamp"] >= FIRST_WAKE + 3 * STEP) & (m["timestamp"] < FIRST_WAKE + 4 * STEP)]
     assert bar["volume"] == pytest.approx(in_bar["volume"].sum())  # all four hours
+
+
+def test_initial_equity_is_pinned_in_the_journal(tmp_path: Path) -> None:
+    w = make_world(tmp_path)
+    w.run(FIRST_WAKE, FIRST_WAKE + STEP)
+    assert w.journal.get_float("initial_equity") == 10_000.0
+    changed = replace(w.settings, initial_equity=25_000.0)
+    with pytest.raises(EquityMismatch, match="10000.00"):
+        PaperLoop(changed, w.fx, w.journal, w.loop.broker)
+    PaperLoop(w.settings, w.fx, w.journal, w.loop.broker)  # same value: fine
 
 
 # --- B4: divergence classification -------------------------------------------------------
