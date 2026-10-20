@@ -9,6 +9,7 @@ from trader.backtest import research
 from trader.backtest.costs import Costs
 from trader.backtest.engine import EngineConfig, run
 from trader.backtest.report import Meta
+from trader.risk.limits import RiskLimits
 from trader.state import snapshot as snap
 from trader.strategy.base import StopSizing
 
@@ -86,7 +87,7 @@ def test_random_entry_runs_through_shared_pool_engine() -> None:
     times = pd.DatetimeIndex(feats.index[feats["ready"]][:-1])
     entries, exits = research.random_schedule(times, np.array([10, 20, 5]), rng)
     strat = research.RandomEntry(entries, exits, SIZING)
-    cfg = EngineConfig(10_000.0, Costs(0.001, 0.0005), True, 10, 20)
+    cfg = EngineConfig(10_000.0, Costs(0.001, 0.0005), True, RiskLimits.from_config(CONFIG))
     res = run({"X/USDT": df}, {"X/USDT": feats}, strat, cfg, T0, T0 + n * HOUR, HOUR)
     assert sorted(res.trades["bars_held"]) == [5, 10, 20]
     assert (res.trades["exit_reason"] == "signal").all()

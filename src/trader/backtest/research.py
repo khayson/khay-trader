@@ -36,6 +36,7 @@ from trader.backtest.report import (
 )
 from trader.data import store
 from trader.data.resample import resample
+from trader.risk.limits import RiskLimits
 from trader.state.snapshot import FeatureParams, Snapshot, features
 from trader.strategy.base import (
     Action,
@@ -265,9 +266,7 @@ def build_research_report(
     ]
 
     def engine_cfg(c: Costs) -> EngineConfig:
-        return EngineConfig(
-            INITIAL_EQUITY, c, True, risk["max_position_pct"], risk["max_total_exposure_pct"]
-        )
+        return EngineConfig(INITIAL_EQUITY, c, True, RiskLimits.from_config(cfg))
 
     lines = [
         f"# Research round 1 ({meta.date})",

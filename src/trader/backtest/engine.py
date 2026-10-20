@@ -2,8 +2,9 @@
 
 Per candle i:
   1. at the open: fill orders signalled at the previous close (exits first, then entries),
-     priced at the open with slippage and fees; entries are capped by position size,
-     total exposure and available cash (inline until Phase 4's risk module);
+     priced at the open with slippage and fees; entries are sized to the risk layer's
+     headroom and available cash, then must pass `risk.limits.pre_trade_check`
+     (freshness, daily loss vs the UTC day's first open, order rate, caps);
   2. intrabar stops (optional): if low <= the stop in force, fill at min(open, stop);
   3. at the close: mark to market, then ask the strategy; its intents fill at candle i+1's
      open, never at the close they were computed on. HOLD intents ratchet the stop.
@@ -23,6 +24,14 @@ from typing import Any
 import pandas as pd
 
 from trader.backtest.costs import Costs
+from trader.risk.limits import (
+    Account,
+    Approved,
+    EntryOrder,
+    RiskLimits,
+    entry_headroom,
+    pre_trade_check,
+)
 from trader.state.snapshot import FEATURES, Snapshot
 from trader.strategy.base import Action, Intent, Position, Strategy
 
@@ -32,8 +41,7 @@ class EngineConfig:
     initial_equity: float
     costs: Costs
     intrabar_stops: bool
-    max_position_pct: float
-    max_total_exposure_pct: float
+    limits: RiskLimits
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,7 @@ class Result:
     equity: pd.DataFrame  # by close time: equity, cash, exposure, value_<sym>, pnl_<sym>
     fills: pd.DataFrame
     trades: pd.DataFrame
+    rejections: pd.DataFrame  # entries the risk layer refused: time, symbol, reason
 
 
 @dataclass
@@ -196,12 +205,16 @@ def run(
     book = _Book(cfg.costs, cfg.initial_equity, cashflow={s: 0.0 for s in symbols})
     pending: dict[str, Intent] = {}
     rows = []
+    rejections: list[dict[str, Any]] = []
+    day, day_start_equity = None, cfg.initial_equity
     n = len(times)
     for i in range(n):
         ts = times[i]
         opens = {s: float(ohlc[s]["open"][i]) for s in symbols}
         if i > 0 and ts - times[i - 1] > step:
             pending = {}  # outage: orders signalled before it never reached the market
+        if ts.floor("D") != day:
+            day, day_start_equity = ts.floor("D"), book.cash + book.value(opens)
 
         # 1. fills at the open for signals from the previous close; exits free cash first
         for s in sorted(pending, key=lambda s: pending[s].action is not Action.EXIT):
@@ -210,17 +223,26 @@ def run(
                 book.sell(s, opens[s], "signal", ts, ts, step)
             elif intent.action is Action.ENTER and s not in book.positions:
                 equity = book.cash + book.value(opens)
+                held = {s2: p.qty * opens[s2] for s2, p in book.positions.items()}
+                account = Account(equity, held, day_start_equity)
                 price = cfg.costs.buy_price(opens[s])
-                notional_cap = min(
-                    equity * cfg.max_position_pct / 100,
-                    equity * cfg.max_total_exposure_pct / 100 - book.value(opens),
-                    book.cash / (1 + cfg.costs.fee),
+                headroom = min(
+                    entry_headroom(account, s, cfg.limits), book.cash / (1 + cfg.costs.fee)
                 )
-                qty = min(intent.size, notional_cap / price)
-                if qty > 0 and intent.stop_price is not None:
+                qty = min(intent.size, headroom / price)
+                if qty <= 0 or intent.stop_price is None:
+                    continue
+                # Signal candle closed at ts and we act at ts: data is fresh by construction.
+                orders = [f["time"] for f in book.fills]
+                decision = pre_trade_check(
+                    EntryOrder(s, qty * price), account, cfg.limits, orders, ts, ts, step
+                )
+                if isinstance(decision, Approved):
                     book.buy(
                         s, qty, opens[s], intent.stop_price, ts, ts, intent.size, equity, opens
                     )
+                else:
+                    rejections.append({"time": ts, "symbol": s, "reason": decision.reason})
         pending = {}
 
         # 2. intrabar stops against the stop in force since the previous close
@@ -268,6 +290,7 @@ def run(
         equity=pd.DataFrame(rows, index=close_times),
         fills=pd.DataFrame(book.fills, columns=_FILL_COLUMNS),
         trades=pd.DataFrame(book.trades, columns=_TRADE_COLUMNS),
+        rejections=pd.DataFrame(rejections, columns=["time", "symbol", "reason"]),
     )
 
 

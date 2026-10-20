@@ -23,6 +23,7 @@ from trader.backtest import metrics
 from trader.backtest.costs import ZERO, Costs
 from trader.backtest.engine import EngineConfig, Result, run
 from trader.data import store
+from trader.risk.limits import RiskLimits
 from trader.state.snapshot import FeatureParams, features
 from trader.strategy.baseline import Baseline, BaselineParams
 
@@ -226,8 +227,7 @@ def build_report(
                     INITIAL_EQUITY,
                     costs if on else ZERO,
                     intrabar,
-                    risk["max_position_pct"],
-                    risk["max_total_exposure_pct"],
+                    RiskLimits.from_config(cfg),
                 ),
                 split.start,
                 split.end,
