@@ -11,7 +11,9 @@ risk:
   max_daily_loss_pct: 2
   risk_per_trade_pct: 0.5
   max_orders_per_hour: 6
-  stale_data_seconds: 180   # no trading on stale data
+  stale_data_seconds: 180   # act on a closed bar only within this many seconds of its close
+  max_consecutive_api_errors: 5   # kill switch trips after this many in a row
+  killswitch_state: data/state/killswitch.json  # missing or corrupt = tripped (fail closed)
 features:
   ema_fast: 50
   ema_slow: 200
