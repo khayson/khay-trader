@@ -166,5 +166,8 @@ def test_feature_definitions() -> None:
     assert row["ret_7d"] == pytest.approx(c[i] / c[i - 168] - 1)
     assert row["atr_pct"] == pytest.approx(100 * row["atr"] / c[i])
     assert row["drawdown"] == pytest.approx(c[i] / c[i - 167 : i + 1].max() - 1)
+    h, lo = FULL["high"].to_numpy(), FULL["low"].to_numpy()
+    assert row["channel_high"] == h[i - 55 : i].max()  # prior 55 candles, not candle i
+    assert row["channel_low"] == lo[i - 20 : i].min()
     log_r = np.diff(np.log(c[i - 168 : i + 1]))
     assert row["realized_vol"] == pytest.approx(log_r.std(ddof=1) * math.sqrt(24 * 365))

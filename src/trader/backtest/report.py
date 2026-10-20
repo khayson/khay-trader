@@ -111,7 +111,9 @@ def buy_and_hold(
     return out
 
 
-def _scope_metrics(res: Result, split: Split, scope: str) -> dict[str, float]:
+def _scope_metrics(
+    res: Result, split: Split, scope: str, periods_per_year: float = metrics.PERIODS_PER_YEAR
+) -> dict[str, float]:
     eq = res.equity
     if scope == "combined":
         curve, trades = eq["equity"], res.trades
@@ -127,7 +129,7 @@ def _scope_metrics(res: Result, split: Split, scope: str) -> dict[str, float]:
     return {
         "total_return": total,
         "cagr": metrics.cagr(total, split.end - split.start),
-        "sharpe": metrics.sharpe(curve),
+        "sharpe": metrics.sharpe(curve, periods_per_year),
         "max_dd": metrics.max_drawdown(curve),
         **metrics.trade_stats(trades["return"], trades["pnl"]),
         "exposure": exposure,
@@ -306,7 +308,10 @@ def _git_commit() -> str:
             ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
         ).stdout.strip()
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return "unknown"

@@ -6,7 +6,8 @@ table with causal operations only, so row i depends on candles 0..i and nothing 
 Windows are counted in bars, so input must be gap-free (see config/known_gaps.yaml).
 
 Units: atr_pct is a percent of close; returns and drawdown are fractions; realized_vol
-is the annualized std of 1-bar log returns.
+is the annualized std of 1-bar log returns. Documented exchange outages are treated as
+market-closed time: windows count bars across them.
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ FEATURES = (
     "ret_7d",
     "realized_vol",
     "drawdown",
+    "channel_high",
+    "channel_low",
 )
 
 
@@ -37,6 +40,8 @@ class FeatureParams:
     atr_period: int
     vol_window_hours: int
     drawdown_window_hours: int
+    channel_entry: int  # bars in the prior-high breakout channel
+    channel_exit: int  # bars in the prior-low exit channel
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> FeatureParams:
@@ -45,11 +50,11 @@ class FeatureParams:
     def warmup_bars(self, step: pd.Timedelta) -> int:
         """Candles needed before every feature is defined and the EMAs have converged.
 
-        5 * ema_slow bars leaves ~0.005% weight on the first-candle seed, so features
-        agree regardless of how much history was loaded.
+        5x the longest EMA/channel lookback; for the EMA that leaves ~0.005% weight on the
+        first-candle seed, so features agree regardless of how much history was loaded.
         """
         return max(
-            5 * self.ema_slow,
+            5 * max(self.ema_slow, self.channel_entry, self.channel_exit),
             self.atr_period,
             _bars(pd.Timedelta(days=7), step) + 1,
             _bars(pd.Timedelta(hours=self.vol_window_hours), step) + 1,
@@ -69,6 +74,8 @@ class Snapshot:
     ret_7d: float
     realized_vol: float
     drawdown: float
+    channel_high: float  # highest high of the prior channel_entry candles (excludes this one)
+    channel_low: float  # lowest low of the prior channel_exit candles (excludes this one)
 
 
 def _bars(span: pd.Timedelta, step: pd.Timedelta) -> int:
@@ -113,6 +120,8 @@ def features(candles: pd.DataFrame, step: pd.Timedelta, p: FeatureParams) -> pd.
             "drawdown": close
             / close.rolling(_bars(pd.Timedelta(hours=p.drawdown_window_hours), step)).max()
             - 1,
+            "channel_high": c["high"].shift(1).rolling(p.channel_entry).max(),
+            "channel_low": c["low"].shift(1).rolling(p.channel_exit).min(),
         }
     )
     df.index = pd.DatetimeIndex(c["timestamp"] + step, name="close_time")

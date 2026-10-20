@@ -1,5 +1,59 @@
-# Candle gaps verified by hand as genuine exchange outages.
-# The real-data test fails on any gap not listed here.
-# Entry: {symbol: BTC/USDT, timeframe: 1h, start: "2024-01-01T00:00:00+00:00", end: "..."}
-# start/end are the first and last missing candle open times (UTC), as in reports/data_gaps.md.
-gaps: []
+# Candle gaps verified as genuine exchange outages. The real-data test fails on any gap
+# not listed here. start/end are the first and last missing candle open times (UTC).
+# Verified 2026-10-19: all 27 gaps are identical in BTC/USDT and ETH/USDT (Binance-wide
+# outages, no trading). Research treats them as market-closed time (see research report).
+gaps:
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-01-04T04:00:00+00:00", end: "2018-01-04T04:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-02-08T01:00:00+00:00", end: "2018-02-09T09:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-06-26T02:00:00+00:00", end: "2018-06-26T11:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-06-27T13:00:00+00:00", end: "2018-06-27T13:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-07-04T01:00:00+00:00", end: "2018-07-04T07:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-10-19T06:00:00+00:00", end: "2018-10-19T08:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2018-11-14T02:00:00+00:00", end: "2018-11-14T08:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2019-03-12T02:00:00+00:00", end: "2019-03-12T07:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2019-05-15T03:00:00+00:00", end: "2019-05-15T12:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2019-08-15T02:00:00+00:00", end: "2019-08-15T09:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2019-11-13T02:00:00+00:00", end: "2019-11-13T03:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2019-11-25T02:00:00+00:00", end: "2019-11-25T03:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-02-09T02:00:00+00:00", end: "2020-02-09T02:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-02-19T12:00:00+00:00", end: "2020-02-19T16:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-03-04T10:00:00+00:00", end: "2020-03-04T10:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-04-25T02:00:00+00:00", end: "2020-04-25T03:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-06-28T02:00:00+00:00", end: "2020-06-28T04:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-11-30T06:00:00+00:00", end: "2020-11-30T06:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-12-21T14:00:00+00:00", end: "2020-12-21T17:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2020-12-25T02:00:00+00:00", end: "2020-12-25T02:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2021-02-11T04:00:00+00:00", end: "2021-02-11T04:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2021-03-06T02:00:00+00:00", end: "2021-03-06T02:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2021-04-20T02:00:00+00:00", end: "2021-04-20T03:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2021-04-25T05:00:00+00:00", end: "2021-04-25T07:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2021-08-13T02:00:00+00:00", end: "2021-08-13T05:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2021-09-29T07:00:00+00:00", end: "2021-09-29T08:00:00+00:00"}
+  - {symbol: BTC/USDT, timeframe: 1h, start: "2023-03-24T13:00:00+00:00", end: "2023-03-24T13:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-01-04T04:00:00+00:00", end: "2018-01-04T04:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-02-08T01:00:00+00:00", end: "2018-02-09T09:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-06-26T02:00:00+00:00", end: "2018-06-26T11:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-06-27T13:00:00+00:00", end: "2018-06-27T13:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-07-04T01:00:00+00:00", end: "2018-07-04T07:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-10-19T06:00:00+00:00", end: "2018-10-19T08:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2018-11-14T02:00:00+00:00", end: "2018-11-14T08:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2019-03-12T02:00:00+00:00", end: "2019-03-12T07:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2019-05-15T03:00:00+00:00", end: "2019-05-15T12:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2019-08-15T02:00:00+00:00", end: "2019-08-15T09:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2019-11-13T02:00:00+00:00", end: "2019-11-13T03:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2019-11-25T02:00:00+00:00", end: "2019-11-25T03:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-02-09T02:00:00+00:00", end: "2020-02-09T02:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-02-19T12:00:00+00:00", end: "2020-02-19T16:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-03-04T10:00:00+00:00", end: "2020-03-04T10:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-04-25T02:00:00+00:00", end: "2020-04-25T03:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-06-28T02:00:00+00:00", end: "2020-06-28T04:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-11-30T06:00:00+00:00", end: "2020-11-30T06:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-12-21T14:00:00+00:00", end: "2020-12-21T17:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2020-12-25T02:00:00+00:00", end: "2020-12-25T02:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2021-02-11T04:00:00+00:00", end: "2021-02-11T04:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2021-03-06T02:00:00+00:00", end: "2021-03-06T02:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2021-04-20T02:00:00+00:00", end: "2021-04-20T03:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2021-04-25T05:00:00+00:00", end: "2021-04-25T07:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2021-08-13T02:00:00+00:00", end: "2021-08-13T05:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2021-09-29T07:00:00+00:00", end: "2021-09-29T08:00:00+00:00"}
+  - {symbol: ETH/USDT, timeframe: 1h, start: "2023-03-24T13:00:00+00:00", end: "2023-03-24T13:00:00+00:00"}

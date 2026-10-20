@@ -8,10 +8,15 @@ Per candle i:
   3. at the close: mark to market, then ask the strategy; its intents fill at candle i+1's
      open, never at the close they were computed on. HOLD intents ratchet the stop.
 On the window's last candle open positions are liquidated at the close (reason "end").
+
+Documented exchange outages appear as missing candles. Pending orders do not survive a
+gap (nobody could trade); held positions carry through and their stop is checked against
+the first candle after it, so a gap down fills at that open.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -162,14 +167,18 @@ class _Book:
 def run(
     candles: dict[str, pd.DataFrame],
     features: dict[str, pd.DataFrame],
-    strategy: Strategy,
+    strategy: Strategy | Mapping[str, Strategy],
     cfg: EngineConfig,
     start: pd.Timestamp,
     end: pd.Timestamp,
     step: pd.Timedelta,
 ) -> Result:
-    """Simulate candles with open time in [start, end). Features may span more history."""
+    """Simulate candles with open time in [start, end). Features may span more history.
+
+    `strategy` is shared by all symbols, or given per symbol.
+    """
     symbols = sorted(candles)
+    strategies = strategy if isinstance(strategy, Mapping) else dict.fromkeys(symbols, strategy)
     window = {
         s: df[(df["timestamp"] >= start) & (df["timestamp"] < end)].reset_index(drop=True)
         for s, df in candles.items()
@@ -191,6 +200,8 @@ def run(
     for i in range(n):
         ts = times[i]
         opens = {s: float(ohlc[s]["open"][i]) for s in symbols}
+        if i > 0 and ts - times[i - 1] > step:
+            pending = {}  # outage: orders signalled before it never reached the market
 
         # 1. fills at the open for signals from the previous close; exits free cash first
         for s in sorted(pending, key=lambda s: pending[s].action is not Action.EXIT):
@@ -247,7 +258,7 @@ def run(
                 time=close_times[i], **{f: float(feat_arrays[s][f][i]) for f in FEATURES}
             )
             position = book.positions.get(s)
-            intent = strategy.decide(snap, position, equity)
+            intent = strategies[s].decide(snap, position, equity)
             if intent.action is not Action.HOLD:
                 pending[s] = intent
             elif position is not None and intent.stop_price is not None:

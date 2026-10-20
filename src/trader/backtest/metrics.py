@@ -1,4 +1,4 @@
-"""Performance metrics. Equity curves are hourly; crypto trades 24/7, so 8760 periods a year."""
+"""Performance metrics. Crypto trades 24/7: an hourly curve has 8760 periods a year."""
 
 from __future__ import annotations
 
@@ -15,12 +15,13 @@ def max_drawdown(equity: pd.Series) -> float:
     return float((equity / equity.cummax() - 1).min())
 
 
-def sharpe(equity: pd.Series) -> float:
+def sharpe(equity: pd.Series, periods_per_year: float = PERIODS_PER_YEAR) -> float:
+    """Annualized Sharpe of per-bar returns (risk-free rate 0)."""
     r = equity.pct_change().dropna()
     std = r.std()
     if not std > 0:
         return 0.0
-    return float(r.mean() / std * math.sqrt(PERIODS_PER_YEAR))
+    return float(r.mean() / std * math.sqrt(periods_per_year))
 
 
 def cagr(total_return: float, duration: pd.Timedelta) -> float:

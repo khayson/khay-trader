@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
 
@@ -85,4 +86,16 @@ def find_gaps(df: pd.DataFrame, step: pd.Timedelta) -> list[Gap]:
     for i in deltas.index[deltas > step]:
         prev = ts[i - 1]
         gaps.append(Gap(start=prev + step, end=ts[i] - step, missing=int(deltas[i] / step) - 1))
+    return gaps
+
+
+def load_known_gaps(path: Path, symbol: str, timeframe: str) -> list[Gap]:
+    """Documented exchange outages for one series, from config/known_gaps.yaml."""
+    entries = yaml.safe_load(path.read_text())["gaps"] or []
+    step = pd.Timedelta(timeframe)
+    gaps = []
+    for e in entries:
+        if e["symbol"] == symbol and e["timeframe"] == timeframe:
+            start, end = pd.Timestamp(e["start"]), pd.Timestamp(e["end"])
+            gaps.append(Gap(start=start, end=end, missing=int((end - start) / step) + 1))
     return gaps

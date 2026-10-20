@@ -16,7 +16,13 @@ HOUR = pd.Timedelta(hours=1)
 T0 = pd.Timestamp("2024-01-01", tz="UTC")
 COSTS = Costs(fee=0.001, slippage=0.0005)
 TOY_PARAMS = FeatureParams(
-    ema_fast=2, ema_slow=3, atr_period=2, vol_window_hours=24, drawdown_window_hours=24
+    ema_fast=2,
+    ema_slow=3,
+    atr_period=2,
+    vol_window_hours=24,
+    drawdown_window_hours=24,
+    channel_entry=2,
+    channel_exit=2,
 )  # warmup 169 bars (7d return)
 CONFIG = yaml.safe_load((Path(__file__).parent.parent / "config" / "default.yaml").read_text())
 SYM = "X/USDT"
@@ -203,3 +209,35 @@ def test_engine_deterministic() -> None:
     a, b = run_pairs(), run_pairs()
     pd.testing.assert_frame_equal(a.equity, b.equity)
     pd.testing.assert_frame_equal(a.trades, b.trades)
+
+
+# --- documented outages (market-closed gaps) ---------------------------------------------
+
+
+def test_pending_orders_are_cancelled_across_a_gap() -> None:
+    flat = [100.0] * 200
+    df = candles(flat, flat).drop(index=[181, 182]).reset_index(drop=True)  # outage after 180
+    res = run_one(df, Script({180: (10, 50)}, set()))
+    assert res.fills.empty  # entry signalled at the last pre-gap close never fills
+
+
+def test_stop_checked_at_first_open_after_gap() -> None:
+    o = np.full(200, 100.0)
+    lo = o.copy()
+    o[183], lo[183] = 80.0, 79.0
+    df = candles(o, o, lo).drop(index=[181, 182]).reset_index(drop=True)
+    res = run_one(df, Script({170: (10, 95)}, set()))
+    stop = res.fills[res.fills["reason"] == "stop"]
+    assert stop["time"].iloc[0] == T0 + 183 * HOUR
+    assert stop["price"].iloc[0] == pytest.approx(80 * (1 - COSTS.slippage))
+
+
+def test_per_symbol_strategies() -> None:
+    flat = [100.0] * 200
+    df = candles(flat, flat)
+    cfg = EngineConfig(10_000.0, COSTS, True, 100, 100)
+    pairs = {"A/USDT": df, "B/USDT": df}
+    feats = {s: snap.features(df, HOUR, TOY_PARAMS) for s in pairs}
+    strategies = {"A/USDT": Script({180: (1, 50)}, set()), "B/USDT": Script({}, set())}
+    res = run(pairs, feats, strategies, cfg, T0, T0 + 200 * HOUR, HOUR)
+    assert set(res.fills["symbol"]) == {"A/USDT"}
