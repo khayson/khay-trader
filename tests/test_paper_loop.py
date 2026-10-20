@@ -256,22 +256,44 @@ def test_missed_bar_still_exits(tmp_path: Path, reference: World) -> None:
     assert exits["exit_time"].max() == exit_bar + pd.Timedelta(hours=1)  # at the late price
 
 
-def test_stale_feed_blocks_entry_allows_exit(tmp_path: Path, reference: World) -> None:
+def test_stale_feed_retries_then_goes_stale_and_still_exits(
+    tmp_path: Path, reference: World
+) -> None:
     w = make_world(tmp_path)
     exit_bar = _first(reference, "exit_time", reason="signal")
     w.run(FIRST_WAKE, exit_bar - STEP)
-    # The wake at exit_bar is missed and the candle feed lags an hour behind the next one:
-    # the newest complete bar is the one with the exit signal, but it is stale.
+    # The wake at exit_bar is missed and the candle feed then lags an hour: the newest bar
+    # we can build is the one with the exit signal, one bar behind.
     w.fx.feed_cutoff = exit_bar + STEP - pd.Timedelta(hours=1)
-    w.wake(exit_bar + STEP)
+    w.wake(exit_bar + STEP)  # inside the 15-minute grace: retry, nothing recorded
+    assert w.journal.last_slot() == exit_bar - STEP
+    assert w.journal.frame("decisions")["bar_close"].max() == exit_bar - STEP
+    late = pd.Timedelta(minutes=16)
+    w.wake(exit_bar + STEP, delay=late)  # grace over: the slot is stale
+    slots = w.journal.wake_slots().set_index("slot")["status"]
+    assert slots[exit_bar] == "late" and slots[exit_bar + STEP] == "stale"
     decisions = w.journal.frame("decisions")
     assert decisions["bar_close"].max() == exit_bar
     assert (w.journal.frame("events")["kind"] == "stale_feed").any()  # priced from the book
     trades = w.journal.frame("trades")
-    assert (trades["exit_time"] == exit_bar + STEP).any()  # exit executed anyway
-    wake = decisions[decisions["wake_time"] == exit_bar + STEP + ON_TIME]
+    assert (trades["exit_time"] == exit_bar + STEP).any()  # exit evaluated and executed
+    wake = decisions[decisions["wake_time"] == exit_bar + STEP + late]
     entries = wake[wake["action"] == "enter"]
     assert entries["risk"].str.startswith("rejected: stale data").all()
+
+
+def test_late_bar_is_retried_and_exit_runs(tmp_path: Path, reference: World) -> None:
+    w = make_world(tmp_path)
+    exit_bar = _first(reference, "exit_time", reason="signal")
+    w.run(FIRST_WAKE, exit_bar - STEP)
+    w.fx.feed_cutoff = exit_bar - pd.Timedelta(hours=1)  # the bar's last hour is not out yet
+    w.wake(exit_bar)
+    assert w.journal.last_slot() == exit_bar - STEP  # slot not consumed
+    w.fx.feed_cutoff = None  # published three minutes late
+    w.wake(exit_bar, delay=pd.Timedelta(minutes=3, seconds=10))
+    assert w.journal.wake_slots().set_index("slot").at[exit_bar, "status"] == "late"
+    trades = w.journal.frame("trades")
+    assert (trades.loc[trades["exit_reason"] == "signal", "exit_time"] == exit_bar).any()
 
 
 # --- kill switch -----------------------------------------------------------------------------

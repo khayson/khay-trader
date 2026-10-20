@@ -73,6 +73,7 @@ log = logging.getLogger("trader.loop")
 HOUR = pd.Timedelta(hours=1)
 MINUTE = pd.Timedelta(minutes=1)
 MAX_CRASHES = 5
+STALE_GRACE = pd.Timedelta(minutes=15)  # wait this long for a late bar before going stale
 
 # Entry rejections the backtest cannot reproduce; divergence treats their bars as unclean.
 OPERATIONAL_REJECTIONS = (
@@ -88,6 +89,10 @@ OPERATIONAL_REJECTIONS = (
 
 class MarketDataError(Exception):
     """Exchange data missing or inconsistent; handled like an API error."""
+
+
+class StaleFeedRetry(MarketDataError):
+    """The newest bar is not published yet; retry the wake (not an API error)."""
 
 
 @dataclass(frozen=True)
@@ -332,6 +337,10 @@ class PaperLoop:
         self.j.set("heartbeat", now)
         try:
             self._wake(now)
+        except StaleFeedRetry as e:  # nothing recorded; the scheduler retries next minute
+            self.restore()
+            log.info("wake at %s: %s; retrying", now, e)
+            return
         except (ccxt.BaseError, MarketDataError) as e:
             self.restore()
             slot = now.floor(self.step_td)
@@ -353,6 +362,9 @@ class PaperLoop:
         bars, feats, new_outages = self._market(now)
         last_open = min(b["timestamp"].iloc[-1] for b in bars.values())
         last_close = last_open + step
+        expected = now.floor(step)
+        if last_close < expected and now - expected < STALE_GRACE:
+            raise StaleFeedRetry(f"newest bar closes {last_close}, expected {expected}")
         ref_time = now.floor(HOUR)  # the current 1h candle; = new bar's open when on time
         opens = {s: self._ref_price(s, ref_time, now) for s in self.s.symbols}
         stop_until = min(now.floor("1min"), last_close)
