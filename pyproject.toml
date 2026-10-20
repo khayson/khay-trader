@@ -32,6 +32,8 @@ packages = ["src/trader"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = ["slow: long real-data replays; run `pytest -m slow` before every merge to main"]
 
 [tool.ruff]
 line-length = 100

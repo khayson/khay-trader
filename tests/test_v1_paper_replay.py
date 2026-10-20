@@ -39,6 +39,7 @@ def available() -> bool:
     )
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not available(), reason="needs 1h candles from before 2022-11")
 def test_candidate_a_paper_replay_on_real_candles(tmp_path: Path) -> None:
     hours = {s: store.load(p) for s, p in PATHS.items()}

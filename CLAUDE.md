@@ -11,7 +11,7 @@ SPEC.md is the source of truth. Implement one phase at a time; stop for review a
 ## Commands
 - Setup: `python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"` (or `uv sync --extra dev`)
 - Secret scan: `.venv/Scripts/pre-commit install` once; runs detect-secrets via the venv interpreter on every commit (no activation needed)
-- Tests: `.venv/Scripts/python -m pytest`
+- Tests: `.venv/Scripts/python -m pytest` (fast suite); before every merge to main also run `.venv/Scripts/python -m pytest -m slow` (real-data paper replay, ~5 min)
 - Lint/types: `.venv/Scripts/python -m ruff check . && .venv/Scripts/python -m mypy`
 - Backfill candles: `.venv/Scripts/trader-backfill --years 2`
 - Kill switch: `.venv/Scripts/trader-killswitch status|trip --reason R|rearm --reason R --equity E` (missing state = tripped)
