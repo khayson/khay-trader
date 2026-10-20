@@ -862,6 +862,11 @@ class PaperLoop:
                     state = ks.load(self.s.ks_path)
                     self._save_ks(state, ks.trip(state, f"{crashes} consecutive crashes", now), now)
                 self.alerter.flush()
+            recorded = self.j.last_slot()
+            if recorded is None or recorded < slot:
+                # The wake is still retrying (stale feed, API outage, crash): keep stop
+                # polling, prompt kill-switch flatten and the dead-man ping going.
+                self.tick(now)
         else:
             self.tick(now)
         next_minute = now.floor("1min") + MINUTE + pd.Timedelta(seconds=2)

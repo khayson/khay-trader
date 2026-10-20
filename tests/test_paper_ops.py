@@ -293,6 +293,35 @@ def test_minute_ticks_keep_replay_parity(tmp_path: Path) -> None:
 # --- C9: crashes, over-cap warnings, start-up --------------------------------------------
 
 
+def test_ticks_continue_while_a_stale_wake_retries(tmp_path: Path, reference: World) -> None:
+    w = make_world(tmp_path)
+    entry = _first(reference, "entry_time")
+    w.run(FIRST_WAKE, entry)
+    assert w.journal.positions()
+    slot = entry + STEP
+    w.fx.feed_cutoff = slot - HOUR  # the bar closing at `slot` is late
+    ks.save(w.settings.ks_path, ks.trip(ks.load(w.settings.ks_path), "manual: drill", entry))
+    w.fx.now = slot + pd.Timedelta(seconds=10)
+    w.loop.run_once(w.fx.now)  # wake retries (stale) and the tick flattens
+    assert w.journal.last_slot() == entry  # the slot is still open
+    assert w.journal.positions() == {}
+    assert (w.journal.frame("fills")["reason"] == "killswitch").any()
+
+
+def test_dead_man_pinged_every_minute_during_api_outage(tmp_path: Path) -> None:
+    w = make_world(tmp_path)
+    w.wake(FIRST_WAKE)
+    sent: list[urllib.request.Request] = []
+    w.loop.alerter = Alerter(deadman="https://ping.example.invalid/x", sender=sent.append)
+    w.fx.fail_next = 10**6
+    slot = FIRST_WAKE + STEP
+    for k in range(10):
+        w.fx.now = slot + pd.Timedelta(seconds=10) + k * pd.Timedelta(minutes=1)
+        w.loop.run_once(w.fx.now)
+    assert len(sent) == 10  # one per minute, from the tick that follows each failed wake
+    assert w.journal.last_slot() == FIRST_WAKE
+
+
 def test_consecutive_crashes_have_their_own_counter_and_trip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
