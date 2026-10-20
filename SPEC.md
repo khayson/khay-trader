@@ -74,14 +74,19 @@ risk:
   stale_data_seconds: 180   # no trading on stale data
 ```
 
-## 5. Baseline strategy (benchmark everything against this)
+## 5. Strategy v1 (frozen, git tag `strategy-v1`)
 
-- Long-only spot.
-- Entry: close > EMA50 > EMA200 (i.e. close > EMA50, EMA50 > EMA200; implies close > EMA200) and ATR% inside a sane band.
-  - Deliberate change (Phase 2 review): v1 required only close > EMA200, so a close between EMA200 and EMA50 could enter and then exit next candle on the close < EMA50 rule.
-- Exit: close < EMA50, or ATR trailing stop hit.
-- Size: fixed-fractional risk (`risk_per_trade_pct`) divided by stop distance, capped by `max_position_pct`.
-- Any later idea (including LLM-derived ones) must beat this after costs, out-of-sample.
+Candidate A from research round 1 (`reports/research_round1_2026-10-19.md`). Frozen: any change is v2 and restarts the paper clock.
+
+- Long-only spot, BTC/USDT and ETH/USDT, one shared equity pool.
+- 4h bars, UTC-aligned, resampled from 1h candles (documented exchange outages treated as market-closed time).
+- Entry: close > EMA20 > EMA100.
+- Exit: close < EMA100, or the ATR(14) x3 stop. The stop is set at entry and ratchets up only at bar closes.
+- Size: fixed-fractional risk (`risk_per_trade_pct`) over stop distance, capped by `max_position_pct`. The cap binds almost always, so in practice each position is about 10% of equity.
+- Warmup: 500 bars (5x the longest lookback).
+- Evidence (1x costs): train +43.3%, validate +13.1%, test (second look) +8.9% with max drawdown -6.6%, 86.5th-100th percentile vs random entry. Caveats: four candidates were tried, the test interval on average trade includes zero, and the test period had been seen once before. Treat as worth testing, not as a proven edge.
+- The Phase 2-3 1h baseline (EMA50/200 with ATR% band) failed after costs and is kept only as a reference.
+- Any later idea (including LLM-derived ones) must beat v1 after costs, out-of-sample.
 
 ## 6. Hard risk rules (code only, never delegated to a model)
 
@@ -90,6 +95,7 @@ risk:
 3. Kill switch state persists across restarts.
 4. Risk module has no dependency on the LLM or strategy modules.
 5. Live mode requires `mode: live` and env var `TRADER_LIVE_CONFIRM=yes` and a tiny capital cap in config.
+6. Live stops are exchange-native stop orders resting on the exchange, replaced at each bar close when the stop ratchets. Paper trading simulates the same behaviour (fill at min(open, stop) when a candle's low touches the stop), matching the backtest.
 
 ## 7. Phases
 
@@ -134,12 +140,18 @@ Run one per phase, in a fresh session with this file in the repo root.
 
 ## 9. Go-live gate (all must be true)
 
-- Backtest edge survives costs out-of-sample.
-- 4+ weeks of paper trading, net positive after modeled fees and slippage, drawdown within limits.
+Strategy v1 trades about 1.4 times a week across both pairs, so a few weeks of paper P&L says nothing. The gate is about process.
+
+- Backtest edge survives costs out-of-sample (done for v1, with the caveats in section 5).
+- 12+ weeks of paper trading with strategy v1 unchanged, judged on process:
+  - every paper signal matches a backtest replay over the same candles;
+  - paper fills match the modeled fees and slippage;
+  - the risk layer and kill switch behave as specified (rejections and trips logged and explained);
+  - P&L only needs to avoid disaster (drawdown within limits).
 - Paper fills vs live order book spot-checked for realistic slippage.
 - Kill switch tested manually.
 - Exchange confirmed to accept Ghanaian users; its licensing status checked against current Bank of Ghana and SEC rules.
-- Capital cap set to an amount you can lose entirely.
+- Live start with a capital cap set to an amount you can lose entirely. Scale up only after about 20 completed live trades behave like paper.
 - Trade log export works for tax records (Ghana Revenue Authority).
 
 ## 10. What could be wrong
